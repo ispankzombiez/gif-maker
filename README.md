@@ -102,7 +102,7 @@ gif-maker/
 
 ## Stack
 
-- **Frontend** – React 18, Vite 5
+- **Frontend** – React 18, Vite 8
 - **GIF parsing** – [omggif](https://github.com/deanm/omggif)
 - **GIF encoding** – [gif.js](https://github.com/jnordberg/gif.js)
 - **Rendering** – HTML Canvas API

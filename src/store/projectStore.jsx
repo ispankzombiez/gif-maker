@@ -1,5 +1,5 @@
 /**
- * projectStore.js
+ * projectStore.jsx
  *
  * Centralised state for the GIF editing project.
  * This module exports a React context + custom hook so every

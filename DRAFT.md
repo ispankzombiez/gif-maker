@@ -17,6 +17,7 @@ Build a browser-based app where a user can:
 - per-frame text position controls
 - export GIF
 - simple project state save/load as JSON
+- mobile-friendly interface (responsive layout, touch support)
 
 ## Suggested stack
 - Frontend: React + Vite
@@ -24,7 +25,12 @@ Build a browser-based app where a user can:
 - GIF processing: ffmpeg.wasm or gif.js
 - State: local JSON project file
 
+## Deployment
+- Host on GitHub Pages
+- Live URL: https://ispankzombiez.github.io/gif-maker/
+
 ## Notes
 - Keep the first version focused on a single text layer
 - Make frame-by-frame editing easy before adding more effects
 - Optimize for GitHub Pages deployment
+- Ensure the UI is mobile-friendly with responsive design and touch controls for frame editing

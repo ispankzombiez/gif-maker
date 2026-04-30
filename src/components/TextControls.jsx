@@ -15,22 +15,37 @@
  */
 
 import React from 'react';
-import { useProject } from '../store/projectStore';
+import { useProject, getLayerPositionForFrame } from '../store/projectStore';
 
 const FONT_FAMILIES = ['Arial', 'Georgia', 'Impact', 'Courier New', 'Verdana'];
 
 export default function TextControls() {
-  const { state, addLayer, deleteLayer, updateLayer, selectLayer } = useProject();
-  const { frames, textLayers, selectedLayerId } = state;
+  const { state, addLayer, deleteLayer, updateLayer, updateLayerFramePos, selectLayer } = useProject();
+  const { frames, textLayers, selectedLayerId, currentFrameIndex } = state;
 
   if (!frames.length) return null;
 
   const frameCount = frames.length;
   const selectedLayer = textLayers.find((l) => l.id === selectedLayerId) ?? null;
 
+  // Resolve the current frame's position for the selected layer
+  const currentPos = selectedLayer
+    ? getLayerPositionForFrame(selectedLayer, currentFrameIndex)
+    : { x: 50, y: 90 };
+
   const update = (field, value) => {
     if (!selectedLayer) return;
     updateLayer(selectedLayer.id, { [field]: value });
+  };
+
+  const updatePos = (axis, value) => {
+    if (!selectedLayer) return;
+    updateLayerFramePos(
+      selectedLayer.id,
+      currentFrameIndex,
+      axis === 'x' ? value : currentPos.x,
+      axis === 'y' ? value : currentPos.y
+    );
   };
 
   return (
@@ -163,27 +178,27 @@ export default function TextControls() {
 
           {/* X position */}
           <label className="text-controls__label">
-            X position ({selectedLayer.x}%)
+            X position ({currentPos.x}%) — Frame {currentFrameIndex + 1}
             <input
               className="text-controls__range"
               type="range"
               min={0}
               max={100}
-              value={selectedLayer.x}
-              onChange={(e) => update('x', Number(e.target.value))}
+              value={currentPos.x}
+              onChange={(e) => updatePos('x', Number(e.target.value))}
             />
           </label>
 
           {/* Y position */}
           <label className="text-controls__label">
-            Y position ({selectedLayer.y}%)
+            Y position ({currentPos.y}%) — Frame {currentFrameIndex + 1}
             <input
               className="text-controls__range"
               type="range"
               min={0}
               max={100}
-              value={selectedLayer.y}
-              onChange={(e) => update('y', Number(e.target.value))}
+              value={currentPos.y}
+              onChange={(e) => updatePos('y', Number(e.target.value))}
             />
           </label>
 

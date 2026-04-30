@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
-import { useProject } from '../store/projectStore';
+import { useProject, getLayerPositionForFrame } from '../store/projectStore';
 
 /** Draw a single text layer onto a canvas context. */
 function drawTextLayer(ctx, layer, width, height, isSelected) {
@@ -82,12 +82,13 @@ export function renderFrameWithLayers(ctx, imageData, textLayers, frameIndex, wi
   );
 
   for (const layer of activeLayers) {
-    drawTextLayer(ctx, layer, width, height, false);
+    const pos = getLayerPositionForFrame(layer, frameIndex);
+    drawTextLayer(ctx, { ...layer, ...pos }, width, height, false);
   }
 }
 
 export default function CanvasEditor() {
-  const { state, updateLayer } = useProject();
+  const { state, updateLayerFramePos } = useProject();
   const { frames, currentFrameIndex, width, height, textLayers, selectedLayerId } = state;
   const canvasRef = useRef(null);
   const dragging = useRef(false);
@@ -112,7 +113,8 @@ export default function CanvasEditor() {
       (l) => l.text && currentFrameIndex >= l.startFrame && currentFrameIndex <= l.endFrame
     );
     for (const layer of activeLayers) {
-      drawTextLayer(ctx, layer, width, height, layer.id === selectedLayerId);
+      const pos = getLayerPositionForFrame(layer, currentFrameIndex);
+      drawTextLayer(ctx, { ...layer, ...pos }, width, height, layer.id === selectedLayerId);
     }
   }, [frame, textLayers, selectedLayerId, currentFrameIndex, width, height]);
 
@@ -139,9 +141,9 @@ export default function CanvasEditor() {
     (e) => {
       if (!dragging.current || !selectedLayerId) return;
       const pos = getCanvasPos(e.clientX, e.clientY);
-      updateLayer(selectedLayerId, pos);
+      updateLayerFramePos(selectedLayerId, currentFrameIndex, pos.x, pos.y);
     },
-    [getCanvasPos, selectedLayerId, updateLayer]
+    [getCanvasPos, selectedLayerId, currentFrameIndex, updateLayerFramePos]
   );
 
   const onPointerUp = () => {
@@ -178,7 +180,7 @@ export default function CanvasEditor() {
       />
       {selectedActiveOnFrame && selectedLayer?.text && (
         <p className="canvas-editor__hint">
-          💬 Drag the selected text on the canvas to reposition it
+          💬 Drag the selected text to reposition it on this frame only
         </p>
       )}
     </div>

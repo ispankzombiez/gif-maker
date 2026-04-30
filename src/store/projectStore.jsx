@@ -19,6 +19,14 @@ export const DEFAULT_TEXT_LAYER_PROPS = {
   fontFamily: 'Arial',
   bgColor: '#000000',
   bgAlpha: 0,  // 0 = transparent, 1 = fully opaque
+  angle: 0,    // rotation in degrees
+  mirrorX: false,  // horizontal flip
+  mirrorY: false,  // vertical flip
+  /** Anchor circle position (% of canvas). Text moves with anchor. */
+  anchorX: 50,
+  anchorY: 90,
+  /** Anchor circle display radius in canvas pixels */
+  anchorRadius: 18,
   /**
    * Per-frame position overrides.
    * Shape: { [frameIndex: number]: { x: number, y: number } }
@@ -142,6 +150,34 @@ function reducer(state, action) {
         ),
       };
 
+    case 'MOVE_ANCHOR': {
+      // Move anchor and shift all text positions by the same delta so text
+      // maintains its relative offset from the anchor on every frame.
+      return {
+        ...state,
+        textLayers: state.textLayers.map((l) => {
+          if (l.id !== action.id) return l;
+          const clamp = (v) => Math.max(0, Math.min(100, v));
+          const newAnchorX = clamp(action.anchorX);
+          const newAnchorY = clamp(action.anchorY);
+          const dx = newAnchorX - (l.anchorX ?? l.x ?? 50);
+          const dy = newAnchorY - (l.anchorY ?? l.y ?? 90);
+          const newPositions = {};
+          for (const [k, v] of Object.entries(l.positions ?? {})) {
+            newPositions[k] = { x: clamp(v.x + dx), y: clamp(v.y + dy) };
+          }
+          return {
+            ...l,
+            anchorX: newAnchorX,
+            anchorY: newAnchorY,
+            x: clamp((l.x ?? 50) + dx),
+            y: clamp((l.y ?? 90) + dy),
+            positions: newPositions,
+          };
+        }),
+      };
+    }
+
     case 'SELECT_LAYER':
       return { ...state, selectedLayerId: action.id };
 
@@ -184,6 +220,10 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'UPDATE_LAYER_FRAME_POS', id, frameIndex, x, y });
   }, []);
 
+  const moveAnchor = useCallback((id, anchorX, anchorY) => {
+    dispatch({ type: 'MOVE_ANCHOR', id, anchorX, anchorY });
+  }, []);
+
   const selectLayer = useCallback((id) => {
     dispatch({ type: 'SELECT_LAYER', id });
   }, []);
@@ -202,6 +242,7 @@ export function ProjectProvider({ children }) {
         deleteLayer,
         updateLayer,
         updateLayerFramePos,
+        moveAnchor,
         selectLayer,
         reset,
         DEFAULT_TEXT_LAYER_PROPS,

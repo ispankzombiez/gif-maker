@@ -39,6 +39,16 @@ function EditorLayout() {
   const playRef = useRef(null); // { frameIndex, timeoutId }
   const hasFrames = state.frames.length > 0;
 
+  // ─── Preview playback ────────────────────────────────────────────────────────
+
+  const stopPreview = useCallback(() => {
+    if (playRef.current?.timeoutId) {
+      clearTimeout(playRef.current.timeoutId);
+    }
+    playRef.current = null;
+    setIsPlaying(false);
+  }, []);
+
   // Stop preview when GIF is reset
   useEffect(() => {
     if (!hasFrames && isPlaying) {
@@ -72,16 +82,6 @@ function EditorLayout() {
       setIsPanelOpen(true);
     }
   };
-
-  // ─── Preview playback ────────────────────────────────────────────────────────
-
-  const stopPreview = useCallback(() => {
-    if (playRef.current?.timeoutId) {
-      clearTimeout(playRef.current.timeoutId);
-    }
-    playRef.current = null;
-    setIsPlaying(false);
-  }, []);
 
   const startPreview = useCallback(() => {
     if (!state.frames.length) return;

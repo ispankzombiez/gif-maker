@@ -20,13 +20,11 @@
  *   │  Timeline                       │
  *   ├─────────────────────────────────┤
  *   │  Canvas Editor  (+ FAB overlay) │
- *   ├─────────────────────────────────┤
- *   │  Layer chips bar                │
  *   └─────────────────────────────────┘
- *   [ Bottom sheet slides up when layer selected ]
+ *   ⚙ Floating settings button → side panel slides in from right
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ProjectProvider, useProject } from './store/projectStore';
 import Uploader from './components/Uploader';
 import Timeline from './components/Timeline';
@@ -34,89 +32,91 @@ import CanvasEditor from './components/CanvasEditor';
 import TextControls from './components/TextControls';
 import ExportButton from './components/ExportButton';
 
-/** Horizontal scrollable row of layer chips shown below the canvas on mobile. */
-const MAX_CHIP_TEXT_LENGTH = 12;
-
-function LayerChips({ onChipSelect }) {
-  const { state, selectLayer, deleteLayer } = useProject();
-  const { textLayers, selectedLayerId } = state;
-
-  return (
-    <div className="layer-chips-bar">
-      {textLayers.length === 0 ? (
-        <p className="layer-chips__empty">Tap + to add text</p>
-      ) : (
-        <div className="layer-chips">
-          {textLayers.map((layer, idx) => (
-            <div
-              key={layer.id}
-              className={`layer-chip${layer.id === selectedLayerId ? ' layer-chip--active' : ''}`}
-              onClick={() => {
-                selectLayer(layer.id);
-                onChipSelect?.();
-              }}
-            >
-              <span className="layer-chip__label">
-                {layer.text ? layer.text.slice(0, MAX_CHIP_TEXT_LENGTH) : `Text ${idx + 1}`}
-              </span>
-              <button
-                className="layer-chip__delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteLayer(layer.id);
-                }}
-                aria-label={`Delete text layer ${idx + 1}`}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function EditorLayout() {
-  const { state, reset, addLayer } = useProject();
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const touchStartY = useRef(0);
+  const { state, reset, addLayer, setCurrentFrame } = useProject();
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playRef = useRef(null); // { frameIndex, timeoutId }
   const hasFrames = state.frames.length > 0;
 
-  // Auto-open the bottom sheet on mobile whenever a layer is selected
+  // Stop preview when GIF is reset
+  useEffect(() => {
+    if (!hasFrames && isPlaying) {
+      stopPreview();
+    }
+  }, [hasFrames]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-open the panel on mobile when a layer is selected
   useEffect(() => {
     if (state.selectedLayerId !== null && window.matchMedia('(max-width: 640px)').matches) {
-      setIsSheetOpen(true);
+      setIsPanelOpen(true);
     }
   }, [state.selectedLayerId]);
 
-  // Close sheet when all layers are deleted
+  // Close panel when all layers are deleted
   useEffect(() => {
     if (state.textLayers.length === 0) {
-      setIsSheetOpen(false);
+      setIsPanelOpen(false);
     }
   }, [state.textLayers.length]);
 
   const handleAddLayer = () => {
     addLayer();
     if (window.matchMedia('(max-width: 640px)').matches) {
-      setIsSheetOpen(true);
+      setIsPanelOpen(true);
     }
   };
 
   const handleLayerSelected = () => {
     if (window.matchMedia('(max-width: 640px)').matches) {
-      setIsSheetOpen(true);
+      setIsPanelOpen(true);
     }
   };
 
-  // Swipe-down-to-dismiss on the handle bar
-  const handleTouchStart = (e) => {
-    touchStartY.current = e.touches[0].clientY;
-  };
-  const handleTouchEnd = (e) => {
-    const delta = e.changedTouches[0].clientY - touchStartY.current;
-    if (delta > 60) setIsSheetOpen(false);
+  // ─── Preview playback ────────────────────────────────────────────────────────
+
+  const stopPreview = useCallback(() => {
+    if (playRef.current?.timeoutId) {
+      clearTimeout(playRef.current.timeoutId);
+    }
+    playRef.current = null;
+    setIsPlaying(false);
+  }, []);
+
+  const startPreview = useCallback(() => {
+    if (!state.frames.length) return;
+    // Stop any existing playback first
+    if (playRef.current?.timeoutId) {
+      clearTimeout(playRef.current.timeoutId);
+    }
+    setIsPlaying(true);
+
+    const totalFrames = state.frames.length;
+    const frameDelays = state.frames.map((f) => f.delay ?? 100);
+    let frameIndex = state.currentFrameIndex;
+
+    function scheduleNext() {
+      const delay = frameDelays[frameIndex] ?? 100;
+      const tid = setTimeout(() => {
+        // If playback was stopped, do nothing
+        if (!playRef.current) return;
+        frameIndex = (frameIndex + 1) % totalFrames;
+        setCurrentFrame(frameIndex);
+        playRef.current = { frameIndex, timeoutId: scheduleNext() };
+      }, delay);
+      return tid;
+    }
+
+    const tid = scheduleNext();
+    playRef.current = { frameIndex, timeoutId: tid };
+  }, [state.frames, state.currentFrameIndex, setCurrentFrame]);
+
+  const togglePreview = () => {
+    if (isPlaying) {
+      stopPreview();
+    } else {
+      startPreview();
+    }
   };
 
   return (
@@ -126,13 +126,23 @@ function EditorLayout() {
         <h1 className="app__title">🎬 GIF Maker</h1>
         <nav className="app__nav">
           {hasFrames && (
-            <button
-              className="btn btn--ghost"
-              onClick={reset}
-              title="Start over with a new GIF"
-            >
-              ✖ New
-            </button>
+            <>
+              <button
+                className={`btn ${isPlaying ? 'btn--primary' : 'btn--secondary'}`}
+                onClick={togglePreview}
+                title={isPlaying ? 'Stop preview' : 'Preview GIF with text'}
+                aria-label={isPlaying ? 'Stop preview' : 'Preview GIF'}
+              >
+                {isPlaying ? '⏹ Stop' : '▶ Preview'}
+              </button>
+              <button
+                className="btn btn--ghost"
+                onClick={() => { stopPreview(); reset(); }}
+                title="Start over with a new GIF"
+              >
+                ✖ New
+              </button>
+            </>
           )}
         </nav>
       </header>
@@ -150,7 +160,11 @@ function EditorLayout() {
           <Timeline />
 
           <div className="app__workspace">
-            <CanvasEditor onAddLayer={handleAddLayer} onLayerSelected={handleLayerSelected} />
+            <CanvasEditor
+              onAddLayer={handleAddLayer}
+              onLayerSelected={handleLayerSelected}
+              isPlaying={isPlaying}
+            />
             {/* Desktop sidebar */}
             <aside className="app__sidebar">
               <TextControls />
@@ -158,37 +172,44 @@ function EditorLayout() {
             </aside>
           </div>
 
-          {/* Mobile: layer chips row (hidden on desktop via CSS) */}
-          <LayerChips onChipSelect={() => setIsSheetOpen(true)} />
+          {/* Mobile: floating settings button */}
+          <button
+            className="settings-fab"
+            onClick={() => setIsPanelOpen(true)}
+            aria-label="Open text settings"
+            title="Text settings"
+          >
+            ⚙
+          </button>
 
-          {/* Mobile: backdrop behind bottom sheet */}
+          {/* Mobile: backdrop */}
           <div
-            className={`bottom-sheet-backdrop${isSheetOpen ? ' bottom-sheet-backdrop--visible' : ''}`}
-            onClick={() => setIsSheetOpen(false)}
+            className={`side-panel-backdrop${isPanelOpen ? ' side-panel-backdrop--visible' : ''}`}
+            onClick={() => setIsPanelOpen(false)}
             aria-hidden="true"
           />
 
-          {/* Mobile: bottom sheet (hidden on desktop via CSS) */}
-          <div
-            className={`bottom-sheet${isSheetOpen ? ' bottom-sheet--open' : ''}`}
+          {/* Mobile: side panel */}
+          <aside
+            className={`side-panel${isPanelOpen ? ' side-panel--open' : ''}`}
             role="dialog"
             aria-label="Text layer controls"
           >
-            {/* Drag handle – tap or swipe down to close */}
-            <div
-              className="bottom-sheet__handle-bar"
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-              onClick={() => setIsSheetOpen(false)}
-              aria-label="Tap or swipe down to close"
-            >
-              <span className="bottom-sheet__handle" />
+            <div className="side-panel__header">
+              <span className="side-panel__title">Text Settings</span>
+              <button
+                className="side-panel__close"
+                onClick={() => setIsPanelOpen(false)}
+                aria-label="Close settings panel"
+              >
+                ✕
+              </button>
             </div>
-            <div className="bottom-sheet__content">
+            <div className="side-panel__content">
               <TextControls />
               <ExportButton />
             </div>
-          </div>
+          </aside>
         </main>
       )}
 

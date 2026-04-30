@@ -16,7 +16,11 @@ export default function Uploader() {
   const handleFile = useCallback(
     (file) => {
       if (!file) return;
-      if (!file.type.includes('gif')) {
+      // Accept any file; validate by attempting to parse as GIF below.
+      // Avoid strict MIME-type gating here because some mobile browsers
+      // (e.g. Samsung Internet) report a blank or non-standard MIME type
+      // for GIF files picked from the gallery.
+      if (file.type && !file.type.includes('gif') && !file.name?.toLowerCase().endsWith('.gif')) {
         alert('Please upload a GIF file.');
         return;
       }
@@ -58,7 +62,7 @@ export default function Uploader() {
       <input
         ref={inputRef}
         type="file"
-        accept=".gif,image/gif"
+        accept="image/gif,.gif"
         onChange={onInputChange}
         style={{ display: 'none' }}
       />

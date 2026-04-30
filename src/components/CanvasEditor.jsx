@@ -2,28 +2,44 @@
  * CanvasEditor.jsx
  *
  * Renders the current GIF frame onto an HTML Canvas and draws all active
- * text layers on top.  The user can drag the selected layer to reposition it.
- * Tapping a text layer directly on canvas selects it.
- * A floating "+" button lets users add new text layers without scrolling.
+ * text layers on top.  Touch/pointer interactions:
+ *   - Single pointer drag → reposition selected text (only after movement threshold)
+ *   - Tap on text layer → select it
+ *   - Tap on empty space → deselect
+ *   - Tap on anchor circle → start anchor drag
+ *   - Two-finger pinch → resize text
+ *   - Two-finger rotation → rotate text
+ * A floating "+" button lets users add new text layers.
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import { useProject, getLayerPositionForFrame } from '../store/projectStore';
 
-/** Draw a single text layer onto a canvas context. */
+const DRAG_THRESHOLD_PX = 6;
+
+/** Apply rotation and mirror transforms, draw text centred at origin. */
 function drawTextLayer(ctx, layer, width, height, isSelected) {
   const x = (layer.x / 100) * width;
   const y = (layer.y / 100) * height;
   const fontSize = layer.fontSize ?? 24;
   const color = layer.color ?? '#ffffff';
   const fontFamily = layer.fontFamily ?? 'Arial';
+  const angleRad = ((layer.angle ?? 0) * Math.PI) / 180;
+  const mirrorX = layer.mirrorX ?? false;
+  const mirrorY = layer.mirrorY ?? false;
+  const bgAlpha = layer.bgAlpha ?? 0;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angleRad);
+  if (mirrorX) ctx.scale(-1, 1);
+  if (mirrorY) ctx.scale(1, -1);
 
   ctx.font = `bold ${fontSize}px ${fontFamily}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
   // Optional background rect
-  const bgAlpha = layer.bgAlpha ?? 0;
   if (bgAlpha > 0) {
     const metrics = ctx.measureText(layer.text);
     const pad = fontSize * 0.2;
@@ -34,7 +50,7 @@ function drawTextLayer(ctx, layer, width, height, isSelected) {
     ctx.fillStyle = layer.bgColor ?? '#000000';
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
-    ctx.fillRect(x - bgW / 2, y - bgH / 2, bgW, bgH);
+    ctx.fillRect(-bgW / 2, -bgH / 2, bgW, bgH);
     ctx.restore();
   }
 
@@ -43,9 +59,8 @@ function drawTextLayer(ctx, layer, width, height, isSelected) {
   ctx.shadowBlur = 4;
   ctx.shadowOffsetX = 1;
   ctx.shadowOffsetY = 1;
-
   ctx.fillStyle = color;
-  ctx.fillText(layer.text, x, y);
+  ctx.fillText(layer.text, 0, 0);
 
   // Reset shadow
   ctx.shadowColor = 'transparent';
@@ -53,7 +68,7 @@ function drawTextLayer(ctx, layer, width, height, isSelected) {
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
 
-  // Highlight border around the selected layer's approximate bounding box
+  // Selection border
   if (isSelected) {
     const metrics = ctx.measureText(layer.text);
     const pad = fontSize * 0.3;
@@ -64,9 +79,38 @@ function drawTextLayer(ctx, layer, width, height, isSelected) {
     ctx.lineWidth = 2;
     ctx.setLineDash([4, 3]);
     ctx.shadowColor = 'transparent';
-    ctx.strokeRect(x - bw / 2, y - bh / 2, bw, bh);
+    ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
     ctx.restore();
   }
+
+  ctx.restore();
+}
+
+/** Draw the anchor circle for the selected layer. */
+function drawAnchor(ctx, layer, width, height) {
+  const ax = ((layer.anchorX ?? layer.x ?? 50) / 100) * width;
+  const ay = ((layer.anchorY ?? layer.y ?? 90) / 100) * height;
+  const r = layer.anchorRadius ?? 18;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(ax, ay, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0,216,164,0.9)';
+  ctx.lineWidth = 2.5;
+  ctx.setLineDash([5, 3]);
+  ctx.shadowColor = 'transparent';
+  ctx.stroke();
+
+  // Cross-hairs
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(ax - r * 0.5, ay);
+  ctx.lineTo(ax + r * 0.5, ay);
+  ctx.moveTo(ax, ay - r * 0.5);
+  ctx.lineTo(ax, ay + r * 0.5);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /**
@@ -89,11 +133,23 @@ export function renderFrameWithLayers(ctx, imageData, textLayers, frameIndex, wi
   }
 }
 
-export default function CanvasEditor({ onAddLayer, onLayerSelected }) {
-  const { state, updateLayerFramePos, selectLayer } = useProject();
+export default function CanvasEditor({ onAddLayer, onLayerSelected, isPlaying }) {
+  const { state, updateLayerFramePos, moveAnchor, selectLayer, updateLayer } = useProject();
   const { frames, currentFrameIndex, width, height, textLayers, selectedLayerId } = state;
   const canvasRef = useRef(null);
-  const dragging = useRef(false);
+
+  // Pointer drag state
+  const ptr = useRef({
+    isDown: false,
+    startClientX: 0,
+    startClientY: 0,
+    isDragging: false,
+    mode: null, // 'text' | 'anchor'
+    hitLayerId: null,
+  });
+
+  // Two-finger gesture state
+  const touch2 = useRef(null);
 
   const frame = frames[currentFrameIndex];
   const selectedLayer = textLayers.find((l) => l.id === selectedLayerId) ?? null;
@@ -118,9 +174,14 @@ export default function CanvasEditor({ onAddLayer, onLayerSelected }) {
       const pos = getLayerPositionForFrame(layer, currentFrameIndex);
       drawTextLayer(ctx, { ...layer, ...pos }, width, height, layer.id === selectedLayerId);
     }
-  }, [frame, textLayers, selectedLayerId, currentFrameIndex, width, height]);
 
-  // ─── Drag handling ───────────────────────────────────────────────────────
+    // Draw anchor for selected layer
+    if (selectedLayer && selectedActiveOnFrame) {
+      drawAnchor(ctx, selectedLayer, width, height);
+    }
+  }, [frame, textLayers, selectedLayerId, currentFrameIndex, width, height, selectedLayer, selectedActiveOnFrame]);
+
+  // ─── Coordinate helpers ──────────────────────────────────────────────────────
 
   const getCanvasPos = useCallback(
     (clientX, clientY) => {
@@ -139,71 +200,205 @@ export default function CanvasEditor({ onAddLayer, onLayerSelected }) {
     [width, height]
   );
 
-  const onPointerMove = useCallback(
-    (e) => {
-      if (!dragging.current || !selectedLayerId) return;
-      const pos = getCanvasPos(e.clientX, e.clientY);
-      updateLayerFramePos(selectedLayerId, currentFrameIndex, pos.x, pos.y);
+  const getCanvasPx = useCallback(
+    (clientX, clientY) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return { px: 0, py: 0 };
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = width / rect.width;
+      const scaleY = height / rect.height;
+      return {
+        px: (clientX - rect.left) * scaleX,
+        py: (clientY - rect.top) * scaleY,
+      };
     },
-    [getCanvasPos, selectedLayerId, currentFrameIndex, updateLayerFramePos]
+    [width, height]
   );
 
-  const onPointerUp = () => {
-    dragging.current = false;
-  };
+  /** Test if a tap hits a text layer. Returns layer or null. */
+  const hitTestText = useCallback(
+    (tapPx, tapPy) => {
+      const ctx = canvasRef.current?.getContext('2d');
+      if (!ctx) return null;
+      const activeLayers = textLayers.filter(
+        (l) => l.text && currentFrameIndex >= l.startFrame && currentFrameIndex <= l.endFrame
+      );
+      for (let i = activeLayers.length - 1; i >= 0; i--) {
+        const layer = activeLayers[i];
+        const pos = getLayerPositionForFrame(layer, currentFrameIndex);
+        const lx = (pos.x / 100) * width;
+        const ly = (pos.y / 100) * height;
+        const fontSize = layer.fontSize ?? 24;
+        const angleRad = ((layer.angle ?? 0) * Math.PI) / 180;
 
-  const onPointerDownCanvas = (e) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+        // Transform tap into layer's local (pre-rotation) space
+        const dx = tapPx - lx;
+        const dy = tapPy - ly;
+        const cos = Math.cos(-angleRad);
+        const sin = Math.sin(-angleRad);
+        const localX = dx * cos - dy * sin;
+        const localY = dx * sin + dy * cos;
 
-    // Convert pointer position to canvas pixel coordinates
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = width / rect.width;
-    const scaleY = height / rect.height;
-    const tapX = (e.clientX - rect.left) * scaleX;
-    const tapY = (e.clientY - rect.top) * scaleY;
+        ctx.font = `bold ${fontSize}px ${layer.fontFamily ?? 'Arial'}`;
+        const metrics = ctx.measureText(layer.text);
+        const pad = fontSize * 0.3;
+        const bw = metrics.width + pad * 2;
+        const bh = fontSize + pad * 2;
 
-    const ctx = canvas.getContext('2d');
-    const activeLayers = textLayers.filter(
-      (l) => l.text && currentFrameIndex >= l.startFrame && currentFrameIndex <= l.endFrame
-    );
-
-    // Test layers in reverse draw order (topmost first)
-    for (let i = activeLayers.length - 1; i >= 0; i--) {
-      const layer = activeLayers[i];
-      const layerPos = getLayerPositionForFrame(layer, currentFrameIndex);
-      const lx = (layerPos.x / 100) * width;
-      const ly = (layerPos.y / 100) * height;
-      const fontSize = layer.fontSize ?? 24;
-      ctx.font = `bold ${fontSize}px ${layer.fontFamily ?? 'Arial'}`;
-      const metrics = ctx.measureText(layer.text);
-      const pad = fontSize * 0.3;
-      const bw = metrics.width + pad * 2;
-      const bh = fontSize + pad * 2;
-
-      if (
-        tapX >= lx - bw / 2 && tapX <= lx + bw / 2 &&
-        tapY >= ly - bh / 2 && tapY <= ly + bh / 2
-      ) {
-        if (layer.id === selectedLayerId) {
-          // Already selected — start dragging
-          dragging.current = true;
-          e.currentTarget.setPointerCapture(e.pointerId);
-        } else {
-          // Tap-to-select: switch to this layer
-          selectLayer(layer.id);
-          onLayerSelected?.();
+        if (localX >= -bw / 2 && localX <= bw / 2 && localY >= -bh / 2 && localY <= bh / 2) {
+          return layer;
         }
-        return;
       }
-    }
+      return null;
+    },
+    [textLayers, currentFrameIndex, width, height]
+  );
 
-    // Didn't hit any text layer — if selected layer is active, drag from anywhere
-    if (selectedActiveOnFrame) {
-      dragging.current = true;
-      e.currentTarget.setPointerCapture(e.pointerId);
+  /** Test if a tap hits the anchor circle of the selected layer. */
+  const hitTestAnchor = useCallback(
+    (tapPx, tapPy) => {
+      if (!selectedLayer || !selectedActiveOnFrame) return false;
+      const ax = ((selectedLayer.anchorX ?? selectedLayer.x ?? 50) / 100) * width;
+      const ay = ((selectedLayer.anchorY ?? selectedLayer.y ?? 90) / 100) * height;
+      const r = (selectedLayer.anchorRadius ?? 18) + 8; // slightly larger hit area
+      const dist = Math.hypot(tapPx - ax, tapPy - ay);
+      return dist <= r;
+    },
+    [selectedLayer, selectedActiveOnFrame, width, height]
+  );
+
+  // ─── Pointer events (single-touch drag) ──────────────────────────────────────
+
+  const onPointerDownCanvas = useCallback(
+    (e) => {
+      if (isPlaying) return;
+      const { px, py } = getCanvasPx(e.clientX, e.clientY);
+      ptr.current = {
+        isDown: true,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        isDragging: false,
+        mode: null,
+        hitLayerId: null,
+        startPx: px,
+        startPy: py,
+      };
+
+      // Determine what was tapped (but don't commit to select/drag yet)
+      if (hitTestAnchor(px, py)) {
+        ptr.current.mode = 'anchor';
+        ptr.current.hitLayerId = selectedLayerId;
+      } else {
+        const hit = hitTestText(px, py);
+        if (hit) {
+          ptr.current.mode = 'text';
+          ptr.current.hitLayerId = hit.id;
+        } else {
+          ptr.current.mode = 'empty';
+        }
+      }
+    },
+    [isPlaying, getCanvasPx, hitTestAnchor, hitTestText, selectedLayerId]
+  );
+
+  const onPointerMove = useCallback(
+    (e) => {
+      if (!ptr.current.isDown) return;
+
+      const distMoved = Math.hypot(
+        e.clientX - ptr.current.startClientX,
+        e.clientY - ptr.current.startClientY
+      );
+
+      if (!ptr.current.isDragging) {
+        if (distMoved < DRAG_THRESHOLD_PX) return;
+        // Threshold crossed — start dragging
+        ptr.current.isDragging = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+
+      const pos = getCanvasPos(e.clientX, e.clientY);
+
+      if (ptr.current.mode === 'anchor' && ptr.current.hitLayerId) {
+        moveAnchor(ptr.current.hitLayerId, pos.x, pos.y);
+      } else if (ptr.current.mode === 'text' && ptr.current.hitLayerId) {
+        updateLayerFramePos(ptr.current.hitLayerId, currentFrameIndex, pos.x, pos.y);
+      } else if (ptr.current.mode === 'empty' && selectedLayerId && selectedActiveOnFrame) {
+        // Dragging from empty space moves selected text
+        updateLayerFramePos(selectedLayerId, currentFrameIndex, pos.x, pos.y);
+      }
+    },
+    [getCanvasPos, moveAnchor, updateLayerFramePos, currentFrameIndex, selectedLayerId, selectedActiveOnFrame]
+  );
+
+  const onPointerUp = useCallback(
+    () => {
+      if (!ptr.current.isDragging) {
+        // It was a tap — handle selection
+        const { mode, hitLayerId } = ptr.current;
+        if (mode === 'text' && hitLayerId) {
+          selectLayer(hitLayerId);
+          onLayerSelected?.();
+        } else if (mode === 'empty') {
+          // Deselect
+          selectLayer(null);
+        }
+        // Tapping anchor doesn't change selection
+      }
+      ptr.current.isDown = false;
+      ptr.current.isDragging = false;
+    },
+    [selectLayer, onLayerSelected]
+  );
+
+  // ─── Two-finger gesture handling (pinch + rotate) ─────────────────────────
+
+  const onTouchStart = useCallback(
+    (e) => {
+      if (e.touches.length !== 2 || !selectedLayer) return;
+      e.preventDefault();
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      touch2.current = {
+        initDist: Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY),
+        initAngle: Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX) * (180 / Math.PI),
+        initFontSize: selectedLayer.fontSize ?? 24,
+        initRotation: selectedLayer.angle ?? 0,
+      };
+    },
+    [selectedLayer]
+  );
+
+  const onTouchMove = useCallback(
+    (e) => {
+      if (e.touches.length !== 2 || !touch2.current || !selectedLayer) return;
+      e.preventDefault();
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+
+      const curDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const curAngle = Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX) * (180 / Math.PI);
+
+      const { initDist, initAngle, initFontSize, initRotation } = touch2.current;
+
+      const newFontSize =
+        initDist > 0
+          ? Math.max(10, Math.min(120, Math.round(initFontSize * (curDist / initDist))))
+          : initFontSize;
+
+      const angleDelta = curAngle - initAngle;
+      const newAngle = Math.round(initRotation + angleDelta);
+
+      updateLayer(selectedLayer.id, { fontSize: newFontSize, angle: newAngle });
+    },
+    [selectedLayer, updateLayer]
+  );
+
+  const onTouchEnd = useCallback((e) => {
+    if (e.touches.length < 2) {
+      touch2.current = null;
     }
-  };
+  }, []);
 
   if (!frames.length) return null;
 
@@ -222,10 +417,13 @@ export default function CanvasEditor({ onAddLayer, onLayerSelected }) {
           onPointerDown={onPointerDownCanvas}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
           className="canvas-editor__canvas"
           aria-label="GIF frame editor – tap text to select, drag to reposition"
         />
-        {onAddLayer && (
+        {onAddLayer && !isPlaying && (
           <button
             className="fab"
             onClick={onAddLayer}
@@ -236,9 +434,9 @@ export default function CanvasEditor({ onAddLayer, onLayerSelected }) {
           </button>
         )}
       </div>
-      {selectedActiveOnFrame && selectedLayer?.text && (
+      {selectedActiveOnFrame && selectedLayer?.text && !isPlaying && (
         <p className="canvas-editor__hint">
-          💬 Drag text to reposition on this frame
+          💬 Drag text or anchor to reposition · Pinch/rotate with two fingers
         </p>
       )}
     </div>

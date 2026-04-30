@@ -1,7 +1,7 @@
 /**
  * TextControls.jsx
  *
- * Sidebar panel (desktop) / bottom-sheet panel (mobile) for managing multiple
+ * Sidebar panel (desktop) / side-panel (mobile) for managing multiple
  * independent text overlay layers.
  * Each layer can be:
  *   – added via the "Add Text" button
@@ -10,9 +10,12 @@
  *
  * The selected layer's properties are editable:
  *   – text content, font family, font size, text color  (primary / always visible)
- *   – X / Y position (percentage of canvas)              (primary / always visible)
- *   – background color + opacity (alpha)                 (more options / collapsible)
- *   – start frame / end frame (1-indexed for display)    (more options / collapsible)
+ *   – X / Y position (number inputs, auto-update when text is dragged)
+ *   – rotation angle (degrees)                          (primary)
+ *   – mirror H / V                                      (primary)
+ *   – anchor radius                                     (primary)
+ *   – background color + opacity (alpha)                (more options / collapsible)
+ *   – start frame / end frame (1-indexed for display)   (more options / collapsible)
  */
 
 import React, { useState } from 'react';
@@ -40,8 +43,9 @@ export default function TextControls() {
     updateLayer(selectedLayer.id, { [field]: value });
   };
 
-  const updatePos = (axis, value) => {
+  const updatePos = (axis, rawValue) => {
     if (!selectedLayer) return;
+    const value = Math.max(0, Math.min(100, Number(rawValue) || 0));
     updateLayerFramePos(
       selectedLayer.id,
       currentFrameIndex,
@@ -154,29 +158,73 @@ export default function TextControls() {
             </select>
           </label>
 
-          {/* X position */}
+          {/* X / Y position — number inputs (auto-updated by drag) */}
+          <div className="text-controls__pos-row">
+            <label className="text-controls__label text-controls__label--grow">
+              X % (Frame {currentFrameIndex + 1})
+              <input
+                className="text-controls__input text-controls__input--num"
+                type="number"
+                min={0}
+                max={100}
+                value={currentPos.x}
+                onChange={(e) => updatePos('x', e.target.value)}
+              />
+            </label>
+            <label className="text-controls__label text-controls__label--grow">
+              Y %
+              <input
+                className="text-controls__input text-controls__input--num"
+                type="number"
+                min={0}
+                max={100}
+                value={currentPos.y}
+                onChange={(e) => updatePos('y', e.target.value)}
+              />
+            </label>
+          </div>
+
+          {/* Rotation angle */}
           <label className="text-controls__label">
-            X position ({currentPos.x}%) — Frame {currentFrameIndex + 1}
+            Angle (°)
             <input
-              className="text-controls__range"
-              type="range"
-              min={0}
-              max={100}
-              value={currentPos.x}
-              onChange={(e) => updatePos('x', Number(e.target.value))}
+              className="text-controls__input text-controls__input--num"
+              type="number"
+              min={-360}
+              max={360}
+              value={selectedLayer.angle ?? 0}
+              onChange={(e) => update('angle', Number(e.target.value) || 0)}
             />
           </label>
 
-          {/* Y position */}
+          {/* Mirror toggles */}
+          <div className="text-controls__mirror-row">
+            <button
+              className={`btn btn--secondary text-controls__mirror-btn${selectedLayer.mirrorX ? ' text-controls__mirror-btn--active' : ''}`}
+              onClick={() => update('mirrorX', !selectedLayer.mirrorX)}
+              title="Mirror horizontally"
+            >
+              ↔ Mirror H
+            </button>
+            <button
+              className={`btn btn--secondary text-controls__mirror-btn${selectedLayer.mirrorY ? ' text-controls__mirror-btn--active' : ''}`}
+              onClick={() => update('mirrorY', !selectedLayer.mirrorY)}
+              title="Mirror vertically"
+            >
+              ↕ Mirror V
+            </button>
+          </div>
+
+          {/* Anchor radius */}
           <label className="text-controls__label">
-            Y position ({currentPos.y}%) — Frame {currentFrameIndex + 1}
+            Anchor Size ({selectedLayer.anchorRadius ?? 18}px)
             <input
               className="text-controls__range"
               type="range"
-              min={0}
-              max={100}
-              value={currentPos.y}
-              onChange={(e) => updatePos('y', Number(e.target.value))}
+              min={8}
+              max={60}
+              value={selectedLayer.anchorRadius ?? 18}
+              onChange={(e) => update('anchorRadius', Number(e.target.value))}
             />
           </label>
 

@@ -8,16 +8,20 @@
 
 import React, { createContext, useContext, useReducer, useCallback } from 'react';
 
-// ─── Initial state ────────────────────────────────────────────────────────────
+// ─── Default text layer properties ────────────────────────────────────────────
 
-const DEFAULT_TEXT_OVERLAY = {
+export const DEFAULT_TEXT_LAYER_PROPS = {
   text: '',
   x: 50,       // percentage of canvas width
   y: 90,       // percentage of canvas height
   fontSize: 24,
   color: '#ffffff',
   fontFamily: 'Arial',
+  bgColor: '#000000',
+  bgAlpha: 0,  // 0 = transparent, 1 = fully opaque
 };
+
+// ─── Initial state ────────────────────────────────────────────────────────────
 
 const initialState = {
   /** Array of { imageData: ImageData, delay: number } objects */
@@ -28,12 +32,15 @@ const initialState = {
   /** Index of the frame currently open in the editor */
   currentFrameIndex: 0,
   /**
-   * Per-frame text overlay config.
-   * Key = frame index, value = text overlay object.
-   * Frames not present in the map inherit DEFAULT_TEXT_OVERLAY.
+   * All text overlay layers. Each layer is independent and has its own
+   * text content, styling, position, and frame range.
    */
-  frameOverlays: {},
-  /** Original GIF file name, used when saving a project */
+  textLayers: [],
+  /** ID of the currently selected text layer (null = none). */
+  selectedLayerId: null,
+  /** Monotonically increasing counter for generating unique layer IDs. */
+  nextLayerId: 1,
+  /** Original GIF file name */
   gifFileName: '',
 };
 
@@ -49,34 +56,49 @@ function reducer(state, action) {
         height: action.height,
         gifFileName: action.gifFileName,
         currentFrameIndex: 0,
-        frameOverlays: {},
+        textLayers: [],
+        selectedLayerId: null,
+        nextLayerId: 1,
       };
 
     case 'SET_CURRENT_FRAME':
       return { ...state, currentFrameIndex: action.index };
 
-    case 'UPDATE_OVERLAY': {
-      const existing = state.frameOverlays[action.index] ?? { ...DEFAULT_TEXT_OVERLAY };
+    case 'ADD_LAYER': {
+      const id = state.nextLayerId;
+      const newLayer = {
+        ...DEFAULT_TEXT_LAYER_PROPS,
+        id,
+        startFrame: 0,
+        endFrame: Math.max(0, state.frames.length - 1),
+      };
       return {
         ...state,
-        frameOverlays: {
-          ...state.frameOverlays,
-          [action.index]: { ...existing, ...action.overlay },
-        },
+        textLayers: [...state.textLayers, newLayer],
+        selectedLayerId: id,
+        nextLayerId: id + 1,
       };
     }
 
-    case 'APPLY_OVERLAY_TO_ALL': {
-      const source = state.frameOverlays[action.index] ?? { ...DEFAULT_TEXT_OVERLAY };
-      const newOverlays = {};
-      state.frames.forEach((_, i) => {
-        newOverlays[i] = { ...source };
-      });
-      return { ...state, frameOverlays: newOverlays };
+    case 'DELETE_LAYER': {
+      const remaining = state.textLayers.filter((l) => l.id !== action.id);
+      const newSelectedId =
+        state.selectedLayerId === action.id
+          ? remaining.length > 0 ? remaining[remaining.length - 1].id : null
+          : state.selectedLayerId;
+      return { ...state, textLayers: remaining, selectedLayerId: newSelectedId };
     }
 
-    case 'LOAD_PROJECT':
-      return { ...action.project };
+    case 'UPDATE_LAYER':
+      return {
+        ...state,
+        textLayers: state.textLayers.map((l) =>
+          l.id === action.id ? { ...l, ...action.changes } : l
+        ),
+      };
+
+    case 'SELECT_LAYER':
+      return { ...state, selectedLayerId: action.id };
 
     case 'RESET':
       return { ...initialState };
@@ -101,26 +123,25 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'SET_CURRENT_FRAME', index });
   }, []);
 
-  const updateOverlay = useCallback((index, overlay) => {
-    dispatch({ type: 'UPDATE_OVERLAY', index, overlay });
+  const addLayer = useCallback(() => {
+    dispatch({ type: 'ADD_LAYER' });
   }, []);
 
-  const applyOverlayToAll = useCallback((index) => {
-    dispatch({ type: 'APPLY_OVERLAY_TO_ALL', index });
+  const deleteLayer = useCallback((id) => {
+    dispatch({ type: 'DELETE_LAYER', id });
   }, []);
 
-  const loadProject = useCallback((project) => {
-    dispatch({ type: 'LOAD_PROJECT', project });
+  const updateLayer = useCallback((id, changes) => {
+    dispatch({ type: 'UPDATE_LAYER', id, changes });
+  }, []);
+
+  const selectLayer = useCallback((id) => {
+    dispatch({ type: 'SELECT_LAYER', id });
   }, []);
 
   const reset = useCallback(() => {
     dispatch({ type: 'RESET' });
   }, []);
-
-  const getOverlay = useCallback(
-    (index) => state.frameOverlays[index] ?? { ...DEFAULT_TEXT_OVERLAY },
-    [state.frameOverlays]
-  );
 
   return (
     <ProjectContext.Provider
@@ -128,12 +149,12 @@ export function ProjectProvider({ children }) {
         state,
         setFrames,
         setCurrentFrame,
-        updateOverlay,
-        applyOverlayToAll,
-        loadProject,
+        addLayer,
+        deleteLayer,
+        updateLayer,
+        selectLayer,
         reset,
-        getOverlay,
-        DEFAULT_TEXT_OVERLAY,
+        DEFAULT_TEXT_LAYER_PROPS,
       }}
     >
       {children}

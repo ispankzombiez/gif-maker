@@ -10,10 +10,8 @@
  *   │  Timeline  (when frames loaded) │
  *   ├───────────────┬─────────────────┤
  *   │  Canvas       │ Text controls   │
- *   │  Editor       │                 │
- *   ├───────────────┴─────────────────┤
- *   │  Export / Project IO            │
- *   └─────────────────────────────────┘
+ *   │  Editor       │ + Export        │
+ *   └───────────────┴─────────────────┘
  */
 
 import React from 'react';
@@ -23,7 +21,6 @@ import Timeline from './components/Timeline';
 import CanvasEditor from './components/CanvasEditor';
 import TextControls from './components/TextControls';
 import ExportButton from './components/ExportButton';
-import ProjectIO from './components/ProjectIO';
 
 function EditorLayout() {
   const { state, reset } = useProject();
@@ -35,7 +32,6 @@ function EditorLayout() {
       <header className="app__header">
         <h1 className="app__title">🎬 GIF Maker</h1>
         <nav className="app__nav">
-          <ProjectIO />
           {hasFrames && (
             <button
               className="btn btn--ghost"

@@ -4,6 +4,12 @@
  * Custom hook that parses a GIF file using the `omggif` library and
  * returns individual frames as ImageData objects suitable for <canvas>.
  *
+ * GIFs use delta frames — only changed pixels are stored per frame.
+ * The disposal method controls how the canvas is prepared before each frame:
+ *   0 / 1 — keep previous canvas state (draw new frame on top)
+ *   2     — restore the previous frame's region to the background before drawing
+ *   3     — restore to the canvas state from before the previous frame was drawn
+ *
  * Usage:
  *   const { extractFrames, loading, error } = useGifFrames();
  *   await extractFrames(file);   // triggers store.setFrames(…)
@@ -26,7 +32,6 @@ export function useGifFrames() {
         const arrayBuffer = await file.arrayBuffer();
         const uint8 = new Uint8Array(arrayBuffer);
 
-        // Dynamically import omggif (avoids SSR issues)
         const { GifReader } = await import('omggif');
         const reader = new GifReader(uint8);
 
@@ -36,29 +41,70 @@ export function useGifFrames() {
 
         const frames = [];
 
-        // We composite each frame onto a persistent off-screen canvas so
-        // that GIFs using "do not dispose" between frames render correctly.
+        // Persistent compositing canvas — state is maintained across frames.
         const offscreen = document.createElement('canvas');
         offscreen.width = width;
         offscreen.height = height;
         const offCtx = offscreen.getContext('2d');
 
+        // Temporary canvas used to blit a single frame's delta pixels via
+        // drawImage so that transparent pixels composite correctly (source-over)
+        // rather than overwriting everything like putImageData would.
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = width;
+        tmpCanvas.height = height;
+        const tmpCtx = tmpCanvas.getContext('2d');
+
+        // Saved canvas state for disposal method 3 of the previous frame.
+        let savedSnapshot = null;
+
         for (let i = 0; i < frameCount; i++) {
           const frameInfo = reader.frameInfo(i);
+
+          // ── Step 1: apply the disposal method of the PREVIOUS frame ──────────
+          if (i > 0) {
+            const prevInfo = reader.frameInfo(i - 1);
+            switch (prevInfo.disposal) {
+              case 2:
+                // Restore the region occupied by the previous frame to the
+                // background (treat as transparent — clearRect erases to rgba 0).
+                offCtx.clearRect(prevInfo.x, prevInfo.y, prevInfo.width, prevInfo.height);
+                break;
+              case 3:
+                // Restore the canvas to the state captured before the previous
+                // frame was drawn.
+                if (savedSnapshot) {
+                  offCtx.putImageData(savedSnapshot, 0, 0);
+                }
+                break;
+              default:
+                // Disposal 0 or 1: leave the canvas as-is.
+                break;
+            }
+          }
+
+          // ── Step 2: optionally save canvas state for disposal 3 later ────────
+          savedSnapshot = frameInfo.disposal === 3
+            ? offCtx.getImageData(0, 0, width, height)
+            : null;
+
+          // ── Step 3: decode this frame's delta pixels ──────────────────────────
+          // decodeAndBlitFrameRGBA fills a full-canvas buffer; pixels outside the
+          // frame's bounding box are (0, 0, 0, 0) — transparent.
           const pixelData = new Uint8ClampedArray(width * height * 4);
           reader.decodeAndBlitFrameRGBA(i, pixelData);
 
-          // Build per-frame ImageData
-          const frameImageData = new ImageData(pixelData, width, height);
+          // ── Step 4: composite onto the offscreen canvas ───────────────────────
+          // Use drawImage (source-over) so that transparent delta pixels do NOT
+          // overwrite the underlying composite state — this is the key fix for the
+          // black-chunk / incomplete-pixel rendering bug.
+          tmpCtx.clearRect(0, 0, width, height);
+          tmpCtx.putImageData(new ImageData(pixelData, width, height), 0, 0);
+          offCtx.drawImage(tmpCanvas, 0, 0);
 
-          // Composite onto off-screen canvas (respects disposal method 0/1)
-          offCtx.putImageData(frameImageData, 0, 0);
-
-          // Capture composite snapshot
-          const snapshot = offCtx.getImageData(0, 0, width, height);
-
+          // ── Step 5: snapshot the fully composited frame ───────────────────────
           frames.push({
-            imageData: snapshot,
+            imageData: offCtx.getImageData(0, 0, width, height),
             delay: (frameInfo.delay || 10) * 10, // centiseconds → ms
           });
         }

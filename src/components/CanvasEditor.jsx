@@ -133,7 +133,7 @@ export function renderFrameWithLayers(ctx, imageData, textLayers, frameIndex, wi
   }
 }
 
-export default function CanvasEditor({ onAddLayer, onLayerSelected, isPlaying }) {
+export default function CanvasEditor({ onLayerSelected, isPlaying }) {
   const { state, updateLayerFramePos, moveAnchor, selectLayer, updateLayer } = useProject();
   const { frames, currentFrameIndex, width, height, textLayers, selectedLayerId } = state;
   const canvasRef = useRef(null);
@@ -172,14 +172,14 @@ export default function CanvasEditor({ onAddLayer, onLayerSelected, isPlaying })
     );
     for (const layer of activeLayers) {
       const pos = getLayerPositionForFrame(layer, currentFrameIndex);
-      drawTextLayer(ctx, { ...layer, ...pos }, width, height, layer.id === selectedLayerId);
+      drawTextLayer(ctx, { ...layer, ...pos }, width, height, layer.id === selectedLayerId && !isPlaying);
     }
 
-    // Draw anchor for selected layer
-    if (selectedLayer && selectedActiveOnFrame) {
+    // Draw anchor for selected layer (hidden during preview playback)
+    if (selectedLayer && selectedActiveOnFrame && !isPlaying) {
       drawAnchor(ctx, selectedLayer, width, height);
     }
-  }, [frame, textLayers, selectedLayerId, currentFrameIndex, width, height, selectedLayer, selectedActiveOnFrame]);
+  }, [frame, textLayers, selectedLayerId, currentFrameIndex, width, height, selectedLayer, selectedActiveOnFrame, isPlaying]);
 
   // ─── Coordinate helpers ──────────────────────────────────────────────────────
 
@@ -423,16 +423,7 @@ export default function CanvasEditor({ onAddLayer, onLayerSelected, isPlaying })
           className="canvas-editor__canvas"
           aria-label="GIF frame editor – tap text to select, drag to reposition"
         />
-        {onAddLayer && !isPlaying && (
-          <button
-            className="fab"
-            onClick={onAddLayer}
-            title="Add a new text layer"
-            aria-label="Add text layer"
-          >
-            +
-          </button>
-        )}
+
       </div>
       {selectedActiveOnFrame && selectedLayer?.text && !isPlaying && (
         <p className="canvas-editor__hint">

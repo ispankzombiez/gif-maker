@@ -127,6 +127,7 @@ function EditorLayout() {
         <nav className="app__nav">
           {hasFrames && (
             <>
+              <ExportButton />
               <button
                 className={`btn ${isPlaying ? 'btn--primary' : 'btn--secondary'}`}
                 onClick={togglePreview}
@@ -161,14 +162,12 @@ function EditorLayout() {
 
           <div className="app__workspace">
             <CanvasEditor
-              onAddLayer={handleAddLayer}
               onLayerSelected={handleLayerSelected}
               isPlaying={isPlaying}
             />
             {/* Desktop sidebar */}
             <aside className="app__sidebar">
               <TextControls />
-              <ExportButton />
             </aside>
           </div>
 
@@ -207,7 +206,6 @@ function EditorLayout() {
             </div>
             <div className="side-panel__content">
               <TextControls />
-              <ExportButton />
             </div>
           </aside>
         </main>

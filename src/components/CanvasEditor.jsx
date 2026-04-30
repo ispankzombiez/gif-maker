@@ -1,63 +1,120 @@
 /**
  * CanvasEditor.jsx
  *
- * Renders the current GIF frame onto an HTML Canvas and draws the
- * configured text overlay on top.  The user can drag the text to
- * reposition it; touch events are forwarded to the same logic.
+ * Renders the current GIF frame onto an HTML Canvas and draws all active
+ * text layers on top.  The user can drag the selected layer to reposition it.
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import { useProject } from '../store/projectStore';
 
-/** Draw a frame + overlay onto a canvas context. */
-export function renderFrameWithOverlay(ctx, imageData, overlay, width, height) {
-  ctx.clearRect(0, 0, width, height);
-  ctx.putImageData(imageData, 0, 0);
-
-  if (!overlay?.text) return;
-
-  const x = (overlay.x / 100) * width;
-  const y = (overlay.y / 100) * height;
-  const fontSize = overlay.fontSize ?? 24;
-  const color = overlay.color ?? '#ffffff';
-  const fontFamily = overlay.fontFamily ?? 'Arial';
+/** Draw a single text layer onto a canvas context. */
+function drawTextLayer(ctx, layer, width, height, isSelected) {
+  const x = (layer.x / 100) * width;
+  const y = (layer.y / 100) * height;
+  const fontSize = layer.fontSize ?? 24;
+  const color = layer.color ?? '#ffffff';
+  const fontFamily = layer.fontFamily ?? 'Arial';
 
   ctx.font = `bold ${fontSize}px ${fontFamily}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // Shadow for readability
+  // Optional background rect
+  const bgAlpha = layer.bgAlpha ?? 0;
+  if (bgAlpha > 0) {
+    const metrics = ctx.measureText(layer.text);
+    const pad = fontSize * 0.2;
+    const bgW = metrics.width + pad * 2;
+    const bgH = fontSize + pad * 2;
+    ctx.save();
+    ctx.globalAlpha = bgAlpha;
+    ctx.fillStyle = layer.bgColor ?? '#000000';
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.fillRect(x - bgW / 2, y - bgH / 2, bgW, bgH);
+    ctx.restore();
+  }
+
+  // Text shadow for readability
   ctx.shadowColor = 'rgba(0,0,0,0.8)';
   ctx.shadowBlur = 4;
   ctx.shadowOffsetX = 1;
   ctx.shadowOffsetY = 1;
 
   ctx.fillStyle = color;
-  ctx.fillText(overlay.text, x, y);
+  ctx.fillText(layer.text, x, y);
 
   // Reset shadow
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
+
+  // Highlight border around the selected layer's approximate bounding box
+  if (isSelected) {
+    const metrics = ctx.measureText(layer.text);
+    const pad = fontSize * 0.3;
+    const bw = metrics.width + pad * 2;
+    const bh = fontSize + pad * 2;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(124,92,252,0.85)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.shadowColor = 'transparent';
+    ctx.strokeRect(x - bw / 2, y - bh / 2, bw, bh);
+    ctx.restore();
+  }
+}
+
+/**
+ * Render a GIF frame plus all text layers that are active at `frameIndex`
+ * onto the given canvas context.
+ *
+ * Called by CanvasEditor (preview) and ExportButton (export pipeline).
+ */
+export function renderFrameWithLayers(ctx, imageData, textLayers, frameIndex, width, height) {
+  ctx.clearRect(0, 0, width, height);
+  ctx.putImageData(imageData, 0, 0);
+
+  const activeLayers = (textLayers ?? []).filter(
+    (l) => l.text && frameIndex >= l.startFrame && frameIndex <= l.endFrame
+  );
+
+  for (const layer of activeLayers) {
+    drawTextLayer(ctx, layer, width, height, false);
+  }
 }
 
 export default function CanvasEditor() {
-  const { state, getOverlay, updateOverlay } = useProject();
-  const { frames, currentFrameIndex, width, height } = state;
+  const { state, updateLayer } = useProject();
+  const { frames, currentFrameIndex, width, height, textLayers, selectedLayerId } = state;
   const canvasRef = useRef(null);
   const dragging = useRef(false);
 
   const frame = frames[currentFrameIndex];
-  const overlay = getOverlay(currentFrameIndex);
+  const selectedLayer = textLayers.find((l) => l.id === selectedLayerId) ?? null;
+  const selectedActiveOnFrame =
+    selectedLayer &&
+    currentFrameIndex >= selectedLayer.startFrame &&
+    currentFrameIndex <= selectedLayer.endFrame;
 
-  // Re-render whenever frame or overlay changes
+  // Re-render whenever frame or layers change
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !frame?.imageData) return;
     const ctx = canvas.getContext('2d');
-    renderFrameWithOverlay(ctx, frame.imageData, overlay, width, height);
-  }, [frame, overlay, width, height]);
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.putImageData(frame.imageData, 0, 0);
+
+    const activeLayers = textLayers.filter(
+      (l) => l.text && currentFrameIndex >= l.startFrame && currentFrameIndex <= l.endFrame
+    );
+    for (const layer of activeLayers) {
+      drawTextLayer(ctx, layer, width, height, layer.id === selectedLayerId);
+    }
+  }, [frame, textLayers, selectedLayerId, currentFrameIndex, width, height]);
 
   // ─── Drag handling ───────────────────────────────────────────────────────
 
@@ -78,28 +135,30 @@ export default function CanvasEditor() {
     [width, height]
   );
 
-  const onPointerDown = (e) => {
-    if (!overlay.text) return;
-    dragging.current = true;
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
   const onPointerMove = useCallback(
     (e) => {
-      if (!dragging.current) return;
+      if (!dragging.current || !selectedLayerId) return;
       const pos = getCanvasPos(e.clientX, e.clientY);
-      updateOverlay(currentFrameIndex, pos);
+      updateLayer(selectedLayerId, pos);
     },
-    [getCanvasPos, currentFrameIndex, updateOverlay]
+    [getCanvasPos, selectedLayerId, updateLayer]
   );
 
   const onPointerUp = () => {
     dragging.current = false;
   };
 
+  const onPointerDownCanvas = (e) => {
+    // If clicking on the canvas while no layer is selected, do nothing.
+    // If a layer is selected and active, start dragging.
+    if (selectedActiveOnFrame) {
+      dragging.current = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+  };
+
   if (!frames.length) return null;
 
-  // Scale canvas for display while keeping native resolution
   const MAX_WIDTH = 600;
   const displayWidth = Math.min(MAX_WIDTH, width);
   const displayHeight = Math.round((height / width) * displayWidth);
@@ -111,15 +170,15 @@ export default function CanvasEditor() {
         width={width}
         height={height}
         style={{ width: displayWidth, height: displayHeight, touchAction: 'none' }}
-        onPointerDown={onPointerDown}
+        onPointerDown={onPointerDownCanvas}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         className="canvas-editor__canvas"
-        aria-label="GIF frame editor – drag text to reposition"
+        aria-label="GIF frame editor – drag selected text layer to reposition"
       />
-      {overlay.text && (
+      {selectedActiveOnFrame && selectedLayer?.text && (
         <p className="canvas-editor__hint">
-          💬 Drag the text on the canvas to reposition it
+          💬 Drag the selected text on the canvas to reposition it
         </p>
       )}
     </div>

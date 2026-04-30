@@ -1,21 +1,20 @@
 /**
  * ExportButton.jsx
  *
- * Renders each frame with its text overlay onto an off-screen canvas,
+ * Renders each frame with its active text layers onto an off-screen canvas,
  * then feeds all frames into gif.js to produce a downloadable GIF.
  *
- * gif.js relies on a Web Worker; the worker script is loaded from a CDN
- * path stored in window.GIF_WORKER_URL (set in index.html) or falls back
- * to the bundled copy served from the Vite public directory.
+ * gif.js relies on a Web Worker; the worker script must be served from the
+ * Vite public directory at the configured base path.
  */
 
 import React, { useCallback, useState } from 'react';
 import { useProject } from '../store/projectStore';
-import { renderFrameWithOverlay } from './CanvasEditor';
+import { renderFrameWithLayers } from './CanvasEditor';
 
 export default function ExportButton() {
-  const { state, getOverlay } = useProject();
-  const { frames, width, height } = state;
+  const { state } = useProject();
+  const { frames, width, height, textLayers } = state;
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -25,7 +24,6 @@ export default function ExportButton() {
     setProgress(0);
 
     try {
-      // Dynamically import gif.js
       const GIF = (await import('gif.js')).default;
 
       const gif = new GIF({
@@ -36,15 +34,13 @@ export default function ExportButton() {
         workerScript: `${import.meta.env.BASE_URL}gif.worker.js`,
       });
 
-      // Off-screen canvas for compositing
       const offscreen = document.createElement('canvas');
       offscreen.width = width;
       offscreen.height = height;
       const ctx = offscreen.getContext('2d');
 
       frames.forEach((frame, i) => {
-        const overlay = getOverlay(i);
-        renderFrameWithOverlay(ctx, frame.imageData, overlay, width, height);
+        renderFrameWithLayers(ctx, frame.imageData, textLayers, i, width, height);
         gif.addFrame(offscreen, { copy: true, delay: frame.delay });
       });
 
@@ -68,7 +64,7 @@ export default function ExportButton() {
       setExporting(false);
       setProgress(0);
     }
-  }, [frames, width, height, getOverlay]);
+  }, [frames, width, height, textLayers]);
 
   if (!frames.length) return null;
 

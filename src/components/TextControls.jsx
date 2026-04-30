@@ -59,9 +59,10 @@ function NumberInput({ value, min, max, onChange, className }) {
 }
 
 export default function TextControls() {
-  const { state, addLayer, deleteLayer, updateLayer, updateLayerFramePos, selectLayer } = useProject();
-  const { frames, textLayers, selectedLayerId, currentFrameIndex } = state;
+  const { state, addLayer, deleteLayer, updateLayer, updateLayerFramePos, selectLayer, updateDefaultSettings } = useProject();
+  const { frames, textLayers, selectedLayerId, currentFrameIndex, defaultLayerSettings } = state;
   const [showMore, setShowMore] = useState(false);
+  const [showDefaults, setShowDefaults] = useState(false);
 
   if (!frames.length) return null;
 
@@ -78,6 +79,10 @@ export default function TextControls() {
     updateLayer(selectedLayer.id, { [field]: value });
   };
 
+  const updateDefault = (field, value) => {
+    updateDefaultSettings({ [field]: value });
+  };
+
   const updatePos = (axis, rawValue) => {
     if (!selectedLayer) return;
     const value = Math.max(0, Math.min(100, Number(rawValue) || 0));
@@ -91,6 +96,129 @@ export default function TextControls() {
 
   return (
     <div className="text-controls" aria-label="Text overlay controls">
+      {/* ── Default Settings ─────────────────────────────────────────────── */}
+      <div className="text-controls__defaults">
+        <button
+          className="text-controls__more-toggle"
+          onClick={() => setShowDefaults((v) => !v)}
+          aria-expanded={showDefaults}
+        >
+          {showDefaults ? '▲ Hide Default Settings' : '▼ Default Settings'}
+        </button>
+
+        {showDefaults && (
+          <div className="text-controls__defaults-body">
+            <p className="text-controls__defaults-hint">
+              New text layers will use these settings by default.
+            </p>
+
+            {/* Font size */}
+            <label className="text-controls__label">
+              Size (px)
+              <NumberInput
+                className="text-controls__input text-controls__input--num"
+                value={defaultLayerSettings.fontSize}
+                min={10}
+                max={120}
+                onChange={(v) => updateDefault('fontSize', v)}
+              />
+            </label>
+
+            {/* Text colour */}
+            <div className="text-controls__label">
+              <span>Text Color</span>
+              <input
+                className="text-controls__color"
+                type="color"
+                value={defaultLayerSettings.color}
+                onChange={(e) => updateDefault('color', e.target.value)}
+              />
+            </div>
+
+            {/* Font family */}
+            <label className="text-controls__label">
+              Font
+              <select
+                className="text-controls__select"
+                value={defaultLayerSettings.fontFamily}
+                onChange={(e) => updateDefault('fontFamily', e.target.value)}
+              >
+                {FONT_FAMILIES.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* Rotation angle */}
+            <label className="text-controls__label">
+              Angle (°)
+              <NumberInput
+                className="text-controls__input text-controls__input--num"
+                value={defaultLayerSettings.angle ?? 0}
+                min={-360}
+                max={360}
+                onChange={(v) => updateDefault('angle', v)}
+              />
+            </label>
+
+            {/* Mirror toggles */}
+            <div className="text-controls__mirror-row">
+              <button
+                className={`btn btn--secondary text-controls__mirror-btn${defaultLayerSettings.mirrorX ? ' text-controls__mirror-btn--active' : ''}`}
+                onClick={() => updateDefault('mirrorX', !defaultLayerSettings.mirrorX)}
+                title="Mirror horizontally"
+              >
+                ↔ Mirror H
+              </button>
+              <button
+                className={`btn btn--secondary text-controls__mirror-btn${defaultLayerSettings.mirrorY ? ' text-controls__mirror-btn--active' : ''}`}
+                onClick={() => updateDefault('mirrorY', !defaultLayerSettings.mirrorY)}
+                title="Mirror vertically"
+              >
+                ↕ Mirror V
+              </button>
+            </div>
+
+            {/* Anchor radius */}
+            <label className="text-controls__label">
+              Anchor Size (px)
+              <NumberInput
+                className="text-controls__input text-controls__input--num"
+                value={defaultLayerSettings.anchorRadius ?? 18}
+                min={8}
+                max={60}
+                onChange={(v) => updateDefault('anchorRadius', v)}
+              />
+            </label>
+
+            {/* Background colour + opacity */}
+            <div className="text-controls__bg-row">
+              <div className="text-controls__label text-controls__label--inline">
+                <span>Background</span>
+                <input
+                  className="text-controls__color"
+                  type="color"
+                  value={defaultLayerSettings.bgColor}
+                  onChange={(e) => updateDefault('bgColor', e.target.value)}
+                />
+              </div>
+              <label className="text-controls__label text-controls__label--grow">
+                Opacity (%)
+                <NumberInput
+                  className="text-controls__input text-controls__input--num"
+                  value={Math.round(defaultLayerSettings.bgAlpha * 100)}
+                  min={0}
+                  max={100}
+                  onChange={(v) => updateDefault('bgAlpha', v / 100)}
+                />
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── Layer list ──────────────────────────────────────────────────── */}
       <div className="text-controls__layer-header">
         <h3 className="text-controls__title">Text Layers</h3>

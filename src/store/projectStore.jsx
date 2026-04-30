@@ -60,6 +60,19 @@ export function getLayerPositionForFrame(layer, frameIndex) {
 
 // ─── Initial state ────────────────────────────────────────────────────────────
 
+/**
+ * The subset of DEFAULT_TEXT_LAYER_PROPS that can be overridden via "Default Settings".
+ * Position (x/y/anchorX/anchorY/positions) and frame range are intentionally excluded.
+ */
+export const DEFAULT_SETTINGS_KEYS = [
+  'fontSize', 'color', 'fontFamily', 'bgColor', 'bgAlpha',
+  'angle', 'mirrorX', 'mirrorY', 'anchorRadius',
+];
+
+function pickDefaultSettings(props) {
+  return Object.fromEntries(DEFAULT_SETTINGS_KEYS.map((k) => [k, props[k]]));
+}
+
 const initialState = {
   /** Array of { imageData: ImageData, delay: number } objects */
   frames: [],
@@ -79,6 +92,12 @@ const initialState = {
   nextLayerId: 1,
   /** Original GIF file name */
   gifFileName: '',
+  /**
+   * Default styling applied to every new text layer.
+   * Excludes position and frame-range fields; startFrame is always
+   * set to the current frame index at the time the layer is created.
+   */
+  defaultLayerSettings: pickDefaultSettings(DEFAULT_TEXT_LAYER_PROPS),
 };
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
@@ -105,8 +124,9 @@ function reducer(state, action) {
       const id = state.nextLayerId;
       const newLayer = {
         ...DEFAULT_TEXT_LAYER_PROPS,
+        ...state.defaultLayerSettings,
         id,
-        startFrame: 0,
+        startFrame: state.currentFrameIndex,
         endFrame: Math.max(0, state.frames.length - 1),
       };
       return {
@@ -181,6 +201,15 @@ function reducer(state, action) {
     case 'SELECT_LAYER':
       return { ...state, selectedLayerId: action.id };
 
+    case 'UPDATE_DEFAULT_SETTINGS':
+      return {
+        ...state,
+        defaultLayerSettings: {
+          ...state.defaultLayerSettings,
+          ...action.changes,
+        },
+      };
+
     case 'RESET':
       return { ...initialState };
 
@@ -228,6 +257,10 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'SELECT_LAYER', id });
   }, []);
 
+  const updateDefaultSettings = useCallback((changes) => {
+    dispatch({ type: 'UPDATE_DEFAULT_SETTINGS', changes });
+  }, []);
+
   const reset = useCallback(() => {
     dispatch({ type: 'RESET' });
   }, []);
@@ -244,6 +277,7 @@ export function ProjectProvider({ children }) {
         updateLayerFramePos,
         moveAnchor,
         selectLayer,
+        updateDefaultSettings,
         reset,
         DEFAULT_TEXT_LAYER_PROPS,
       }}

@@ -1,0 +1,407 @@
+/* ─── Reset & base ──────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --color-bg: #0f0f14;
+  --color-surface: #1b1b24;
+  --color-surface2: #26263a;
+  --color-border: #33334a;
+  --color-primary: #7c5cfc;
+  --color-primary-hover: #9b7dff;
+  --color-accent: #00d8a4;
+  --color-text: #e8e8f0;
+  --color-text-dim: #9090a8;
+  --color-danger: #ff5555;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --transition: 0.15s ease;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+/* ─── Buttons ─────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), opacity var(--transition);
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.btn--secondary {
+  background: var(--color-surface2);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+.btn--secondary:hover:not(:disabled) {
+  background: var(--color-border);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-dim);
+  border: 1px solid transparent;
+}
+.btn--ghost:hover:not(:disabled) {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* ─── App layout ──────────────────────────────────────────────────────────── */
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Header */
+.app__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.app__title {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.app__nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Upload screen */
+.app__upload {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+/* Editor layout */
+.app__editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app__workspace {
+  flex: 1;
+  display: flex;
+  gap: 0;
+  overflow: hidden;
+}
+
+.app__sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+/* Footer */
+.app__footer {
+  text-align: center;
+  padding: 10px;
+  color: var(--color-text-dim);
+  font-size: 0.8rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* ─── Uploader ─────────────────────────────────────────────────────────────── */
+.uploader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 60px 40px;
+  max-width: 480px;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+  background: var(--color-surface);
+  user-select: none;
+}
+.uploader:hover,
+.uploader:focus,
+.uploader--dragging {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+  outline: none;
+}
+
+.uploader__icon {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.uploader__label {
+  font-size: 1rem;
+  color: var(--color-text);
+  text-align: center;
+}
+
+.uploader__hint {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+}
+
+.uploader__status {
+  font-size: 1rem;
+  color: var(--color-accent);
+}
+
+.uploader__error {
+  font-size: 0.85rem;
+  color: var(--color-danger);
+}
+
+/* ─── Timeline ─────────────────────────────────────────────────────────────── */
+.timeline {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  padding: 8px 0 4px;
+}
+
+.timeline__strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 0 12px 6px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.timeline__strip::-webkit-scrollbar {
+  height: 4px;
+}
+.timeline__strip::-webkit-scrollbar-track {
+  background: var(--color-surface2);
+}
+.timeline__strip::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+.timeline__thumb {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: var(--color-surface2);
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: border-color var(--transition);
+}
+.timeline__thumb:hover {
+  border-color: var(--color-primary-hover);
+}
+.timeline__thumb--active {
+  border-color: var(--color-primary);
+}
+
+.timeline__thumb canvas {
+  display: block;
+  border-radius: 4px;
+  image-rendering: pixelated;
+}
+
+.timeline__frame-num {
+  font-size: 0.65rem;
+  color: var(--color-text-dim);
+}
+
+.timeline__info {
+  font-size: 0.75rem;
+  color: var(--color-text-dim);
+  padding: 2px 14px;
+}
+
+/* ─── Canvas editor ────────────────────────────────────────────────────────── */
+.canvas-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 20px;
+  gap: 10px;
+  overflow: auto;
+  background: var(--color-bg);
+}
+
+.canvas-editor__canvas {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: crosshair;
+  max-width: 100%;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.canvas-editor__hint {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+}
+
+/* ─── Text controls ────────────────────────────────────────────────────────── */
+.text-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.text-controls__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.text-controls__label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--color-text-dim);
+}
+
+.text-controls__input,
+.text-controls__select {
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface2);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.text-controls__input:focus,
+.text-controls__select:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.text-controls__range {
+  width: 100%;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.text-controls__color {
+  width: 48px;
+  height: 32px;
+  padding: 2px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface2);
+  cursor: pointer;
+}
+
+.text-controls__apply-all {
+  margin-top: 4px;
+}
+
+/* ─── Export / ProjectIO ───────────────────────────────────────────────────── */
+.export-button {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.project-io {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ─── Responsive / mobile ──────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .app__workspace {
+    flex-direction: column;
+  }
+
+  .app__sidebar {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .canvas-editor {
+    padding: 12px;
+  }
+
+  .uploader {
+    padding: 40px 20px;
+  }
+
+  .app__header {
+    padding: 10px 14px;
+  }
+
+  .app__title {
+    font-size: 1.1rem;
+  }
+}

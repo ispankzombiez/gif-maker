@@ -18,10 +18,45 @@
  *   – start frame / end frame (1-indexed for display)   (more options / collapsible)
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useProject, getLayerPositionForFrame } from '../store/projectStore';
 
 const FONT_FAMILIES = ['Arial', 'Georgia', 'Impact', 'Courier New', 'Verdana'];
+
+/** Number input that lets you freely type/delete before committing on blur. */
+function NumberInput({ value, min, max, onChange, className }) {
+  const [raw, setRaw] = useState(String(value));
+
+  // Sync external value changes (e.g. switching layers, drag updates)
+  useEffect(() => {
+    setRaw(String(value));
+  }, [value]);
+
+  const commit = () => {
+    const num = parseFloat(raw);
+    if (!isNaN(num)) {
+      const clamped =
+        Math.max(min !== undefined ? min : -Infinity, Math.min(max !== undefined ? max : Infinity, num));
+      onChange(clamped);
+      setRaw(String(clamped));
+    } else {
+      setRaw(String(value));
+    }
+  };
+
+  return (
+    <input
+      className={className}
+      type="number"
+      min={min}
+      max={max}
+      value={raw}
+      onChange={(e) => setRaw(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === 'Enter' && commit()}
+    />
+  );
+}
 
 export default function TextControls() {
   const { state, addLayer, deleteLayer, updateLayer, updateLayerFramePos, selectLayer } = useProject();
@@ -120,27 +155,26 @@ export default function TextControls() {
 
           {/* Font size */}
           <label className="text-controls__label">
-            Size ({selectedLayer.fontSize}px)
-            <input
-              className="text-controls__range"
-              type="range"
+            Size (px)
+            <NumberInput
+              className="text-controls__input text-controls__input--num"
+              value={selectedLayer.fontSize}
               min={10}
               max={120}
-              value={selectedLayer.fontSize}
-              onChange={(e) => update('fontSize', Number(e.target.value))}
+              onChange={(v) => update('fontSize', v)}
             />
           </label>
 
           {/* Text colour */}
-          <label className="text-controls__label">
-            Text Color
+          <div className="text-controls__label">
+            <span>Text Color</span>
             <input
               className="text-controls__color"
               type="color"
               value={selectedLayer.color}
               onChange={(e) => update('color', e.target.value)}
             />
-          </label>
+          </div>
 
           {/* Font family */}
           <label className="text-controls__label">
@@ -162,24 +196,22 @@ export default function TextControls() {
           <div className="text-controls__pos-row">
             <label className="text-controls__label text-controls__label--grow">
               X % (Frame {currentFrameIndex + 1})
-              <input
+              <NumberInput
                 className="text-controls__input text-controls__input--num"
-                type="number"
+                value={currentPos.x}
                 min={0}
                 max={100}
-                value={currentPos.x}
-                onChange={(e) => updatePos('x', e.target.value)}
+                onChange={(v) => updatePos('x', v)}
               />
             </label>
             <label className="text-controls__label text-controls__label--grow">
               Y %
-              <input
+              <NumberInput
                 className="text-controls__input text-controls__input--num"
-                type="number"
+                value={currentPos.y}
                 min={0}
                 max={100}
-                value={currentPos.y}
-                onChange={(e) => updatePos('y', e.target.value)}
+                onChange={(v) => updatePos('y', v)}
               />
             </label>
           </div>
@@ -187,13 +219,12 @@ export default function TextControls() {
           {/* Rotation angle */}
           <label className="text-controls__label">
             Angle (°)
-            <input
+            <NumberInput
               className="text-controls__input text-controls__input--num"
-              type="number"
+              value={selectedLayer.angle ?? 0}
               min={-360}
               max={360}
-              value={selectedLayer.angle ?? 0}
-              onChange={(e) => update('angle', Number(e.target.value) || 0)}
+              onChange={(v) => update('angle', v)}
             />
           </label>
 
@@ -217,14 +248,13 @@ export default function TextControls() {
 
           {/* Anchor radius */}
           <label className="text-controls__label">
-            Anchor Size ({selectedLayer.anchorRadius ?? 18}px)
-            <input
-              className="text-controls__range"
-              type="range"
+            Anchor Size (px)
+            <NumberInput
+              className="text-controls__input text-controls__input--num"
+              value={selectedLayer.anchorRadius ?? 18}
               min={8}
               max={60}
-              value={selectedLayer.anchorRadius ?? 18}
-              onChange={(e) => update('anchorRadius', Number(e.target.value))}
+              onChange={(v) => update('anchorRadius', v)}
             />
           </label>
 
@@ -242,24 +272,23 @@ export default function TextControls() {
             <>
               {/* Background colour + opacity */}
               <div className="text-controls__bg-row">
-                <label className="text-controls__label text-controls__label--inline">
-                  Background
+                <div className="text-controls__label text-controls__label--inline">
+                  <span>Background</span>
                   <input
                     className="text-controls__color"
                     type="color"
                     value={selectedLayer.bgColor}
                     onChange={(e) => update('bgColor', e.target.value)}
                   />
-                </label>
+                </div>
                 <label className="text-controls__label text-controls__label--grow">
-                  Opacity ({Math.round(selectedLayer.bgAlpha * 100)}%)
-                  <input
-                    className="text-controls__range"
-                    type="range"
+                  Opacity (%)
+                  <NumberInput
+                    className="text-controls__input text-controls__input--num"
+                    value={Math.round(selectedLayer.bgAlpha * 100)}
                     min={0}
                     max={100}
-                    value={Math.round(selectedLayer.bgAlpha * 100)}
-                    onChange={(e) => update('bgAlpha', Number(e.target.value) / 100)}
+                    onChange={(v) => update('bgAlpha', v / 100)}
                   />
                 </label>
               </div>
@@ -268,30 +297,22 @@ export default function TextControls() {
               <div className="text-controls__frame-range">
                 <label className="text-controls__label">
                   Start Frame
-                  <input
+                  <NumberInput
                     className="text-controls__input text-controls__input--num"
-                    type="number"
+                    value={selectedLayer.startFrame + 1}
                     min={1}
                     max={selectedLayer.endFrame + 1}
-                    value={selectedLayer.startFrame + 1}
-                    onChange={(e) => {
-                      const v = Math.max(1, Math.min(selectedLayer.endFrame + 1, Number(e.target.value) || 1));
-                      update('startFrame', v - 1);
-                    }}
+                    onChange={(v) => update('startFrame', Math.round(v) - 1)}
                   />
                 </label>
                 <label className="text-controls__label">
                   End Frame
-                  <input
+                  <NumberInput
                     className="text-controls__input text-controls__input--num"
-                    type="number"
+                    value={selectedLayer.endFrame + 1}
                     min={selectedLayer.startFrame + 1}
                     max={frameCount}
-                    value={selectedLayer.endFrame + 1}
-                    onChange={(e) => {
-                      const v = Math.max(selectedLayer.startFrame + 1, Math.min(frameCount, Number(e.target.value) || frameCount));
-                      update('endFrame', v - 1);
-                    }}
+                    onChange={(v) => update('endFrame', Math.round(v) - 1)}
                   />
                 </label>
               </div>

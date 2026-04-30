@@ -595,8 +595,7 @@ a:hover { text-decoration: underline; }
 
 /* ─── Export ───────────────────────────────────────────────────────────────── */
 .export-button {
-  margin-top: auto;
-  padding-top: 8px;
+  display: inline-flex;
 }
 
 /* ─── Responsive / mobile ──────────────────────────────────────────────────── */
@@ -756,9 +755,4 @@ a:hover { text-decoration: underline; }
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Reduce export button top margin inside side panel */
-  .side-panel__content .export-button {
-    margin-top: 4px;
-    padding-top: 4px;
-  }
 }

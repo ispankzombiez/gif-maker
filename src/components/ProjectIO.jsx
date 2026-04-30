@@ -40,7 +40,7 @@ function dataURLToImageData(dataURL, width, height) {
 
 export default function ProjectIO() {
   const { state, loadProject } = useProject();
-  const { frames, width, height, frameOverlays, gifFileName, currentFrameIndex } = state;
+  const { frames, width, height, textLayers, nextLayerId, gifFileName, currentFrameIndex, defaultLayerSettings } = state;
   const inputRef = useRef(null);
 
   // ── Save ──────────────────────────────────────────────────────────────────
@@ -62,7 +62,9 @@ export default function ProjectIO() {
       width,
       height,
       currentFrameIndex,
-      frameOverlays,
+      textLayers,
+      nextLayerId,
+      defaultLayerSettings,
       frames: serialisedFrames,
     };
 
@@ -73,7 +75,7 @@ export default function ProjectIO() {
     a.download = `${gifFileName.replace(/\.gif$/i, '') || 'project'}.gifmaker.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [frames, width, height, frameOverlays, gifFileName, currentFrameIndex]);
+  }, [frames, width, height, textLayers, nextLayerId, gifFileName, currentFrameIndex, defaultLayerSettings]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -91,7 +93,7 @@ export default function ProjectIO() {
         }
 
         // Restore ImageData from data-URLs
-        const frames = await Promise.all(
+        const restoredFrames = await Promise.all(
           project.frames.map(async (f) => ({
             imageData: await dataURLToImageData(f.dataURL, project.width, project.height),
             delay: f.delay,
@@ -99,12 +101,14 @@ export default function ProjectIO() {
         );
 
         loadProject({
-          frames,
+          frames: restoredFrames,
           width: project.width,
           height: project.height,
           gifFileName: project.gifFileName ?? '',
           currentFrameIndex: project.currentFrameIndex ?? 0,
-          frameOverlays: project.frameOverlays ?? {},
+          textLayers: project.textLayers ?? [],
+          nextLayerId: project.nextLayerId ?? 1,
+          defaultLayerSettings: project.defaultLayerSettings,
         });
       } catch (err) {
         console.error('Load error:', err);
@@ -119,9 +123,11 @@ export default function ProjectIO() {
 
   return (
     <div className="project-io">
-      <button className="btn btn--secondary" onClick={handleSave} title="Save project as JSON">
-        💾 Save project
-      </button>
+      {frames.length > 0 && (
+        <button className="btn btn--secondary" onClick={handleSave} title="Save project as JSON">
+          💾 Save project
+        </button>
+      )}
 
       <button
         className="btn btn--secondary"

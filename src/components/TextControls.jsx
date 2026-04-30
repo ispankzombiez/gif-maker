@@ -1,20 +1,21 @@
 /**
  * TextControls.jsx
  *
- * Sidebar panel for managing multiple independent text overlay layers.
+ * Sidebar panel (desktop) / bottom-sheet panel (mobile) for managing multiple
+ * independent text overlay layers.
  * Each layer can be:
  *   – added via the "Add Text" button
  *   – selected by clicking its row in the layer list
  *   – deleted via the trash button in its row
  *
  * The selected layer's properties are editable:
- *   – text content, font family, font size, text color
- *   – background color + opacity (alpha)
- *   – X / Y position (percentage of canvas)
- *   – start frame / end frame (1-indexed for display, 0-indexed internally)
+ *   – text content, font family, font size, text color  (primary / always visible)
+ *   – X / Y position (percentage of canvas)              (primary / always visible)
+ *   – background color + opacity (alpha)                 (more options / collapsible)
+ *   – start frame / end frame (1-indexed for display)    (more options / collapsible)
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useProject, getLayerPositionForFrame } from '../store/projectStore';
 
 const FONT_FAMILIES = ['Arial', 'Georgia', 'Impact', 'Courier New', 'Verdana'];
@@ -22,6 +23,7 @@ const FONT_FAMILIES = ['Arial', 'Georgia', 'Impact', 'Courier New', 'Verdana'];
 export default function TextControls() {
   const { state, addLayer, deleteLayer, updateLayer, updateLayerFramePos, selectLayer } = useProject();
   const { frames, textLayers, selectedLayerId, currentFrameIndex } = state;
+  const [showMore, setShowMore] = useState(false);
 
   if (!frames.length) return null;
 
@@ -112,22 +114,6 @@ export default function TextControls() {
             />
           </label>
 
-          {/* Font family */}
-          <label className="text-controls__label">
-            Font
-            <select
-              className="text-controls__select"
-              value={selectedLayer.fontFamily}
-              onChange={(e) => update('fontFamily', e.target.value)}
-            >
-              {FONT_FAMILIES.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </label>
-
           {/* Font size */}
           <label className="text-controls__label">
             Size ({selectedLayer.fontSize}px)
@@ -152,29 +138,21 @@ export default function TextControls() {
             />
           </label>
 
-          {/* Background colour + opacity */}
-          <div className="text-controls__bg-row">
-            <label className="text-controls__label text-controls__label--inline">
-              Background
-              <input
-                className="text-controls__color"
-                type="color"
-                value={selectedLayer.bgColor}
-                onChange={(e) => update('bgColor', e.target.value)}
-              />
-            </label>
-            <label className="text-controls__label text-controls__label--grow">
-              Opacity ({Math.round(selectedLayer.bgAlpha * 100)}%)
-              <input
-                className="text-controls__range"
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(selectedLayer.bgAlpha * 100)}
-                onChange={(e) => update('bgAlpha', Number(e.target.value) / 100)}
-              />
-            </label>
-          </div>
+          {/* Font family */}
+          <label className="text-controls__label">
+            Font
+            <select
+              className="text-controls__select"
+              value={selectedLayer.fontFamily}
+              onChange={(e) => update('fontFamily', e.target.value)}
+            >
+              {FONT_FAMILIES.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {/* X position */}
           <label className="text-controls__label">
@@ -202,37 +180,75 @@ export default function TextControls() {
             />
           </label>
 
-          {/* Frame range */}
-          <div className="text-controls__frame-range">
-            <label className="text-controls__label">
-              Start Frame
-              <input
-                className="text-controls__input text-controls__input--num"
-                type="number"
-                min={1}
-                max={selectedLayer.endFrame + 1}
-                value={selectedLayer.startFrame + 1}
-                onChange={(e) => {
-                  const v = Math.max(1, Math.min(selectedLayer.endFrame + 1, Number(e.target.value) || 1));
-                  update('startFrame', v - 1);
-                }}
-              />
-            </label>
-            <label className="text-controls__label">
-              End Frame
-              <input
-                className="text-controls__input text-controls__input--num"
-                type="number"
-                min={selectedLayer.startFrame + 1}
-                max={frameCount}
-                value={selectedLayer.endFrame + 1}
-                onChange={(e) => {
-                  const v = Math.max(selectedLayer.startFrame + 1, Math.min(frameCount, Number(e.target.value) || frameCount));
-                  update('endFrame', v - 1);
-                }}
-              />
-            </label>
-          </div>
+          {/* ── More options toggle ──────────────────────────────────────── */}
+          <button
+            className="text-controls__more-toggle"
+            onClick={() => setShowMore((v) => !v)}
+            aria-expanded={showMore}
+          >
+            {showMore ? '▲ Less options' : '▼ More options'}
+          </button>
+
+          {/* ── Collapsible secondary controls ──────────────────────────── */}
+          {showMore && (
+            <>
+              {/* Background colour + opacity */}
+              <div className="text-controls__bg-row">
+                <label className="text-controls__label text-controls__label--inline">
+                  Background
+                  <input
+                    className="text-controls__color"
+                    type="color"
+                    value={selectedLayer.bgColor}
+                    onChange={(e) => update('bgColor', e.target.value)}
+                  />
+                </label>
+                <label className="text-controls__label text-controls__label--grow">
+                  Opacity ({Math.round(selectedLayer.bgAlpha * 100)}%)
+                  <input
+                    className="text-controls__range"
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(selectedLayer.bgAlpha * 100)}
+                    onChange={(e) => update('bgAlpha', Number(e.target.value) / 100)}
+                  />
+                </label>
+              </div>
+
+              {/* Frame range */}
+              <div className="text-controls__frame-range">
+                <label className="text-controls__label">
+                  Start Frame
+                  <input
+                    className="text-controls__input text-controls__input--num"
+                    type="number"
+                    min={1}
+                    max={selectedLayer.endFrame + 1}
+                    value={selectedLayer.startFrame + 1}
+                    onChange={(e) => {
+                      const v = Math.max(1, Math.min(selectedLayer.endFrame + 1, Number(e.target.value) || 1));
+                      update('startFrame', v - 1);
+                    }}
+                  />
+                </label>
+                <label className="text-controls__label">
+                  End Frame
+                  <input
+                    className="text-controls__input text-controls__input--num"
+                    type="number"
+                    min={selectedLayer.startFrame + 1}
+                    max={frameCount}
+                    value={selectedLayer.endFrame + 1}
+                    onChange={(e) => {
+                      const v = Math.max(selectedLayer.startFrame + 1, Math.min(frameCount, Number(e.target.value) || frameCount));
+                      update('endFrame', v - 1);
+                    }}
+                  />
+                </label>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

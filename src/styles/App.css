@@ -291,6 +291,13 @@ a:hover { text-decoration: underline; }
   background: var(--color-bg);
 }
 
+.canvas-editor__canvas-wrap {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  line-height: 0;
+}
+
 .canvas-editor__canvas {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -303,6 +310,41 @@ a:hover { text-decoration: underline; }
 .canvas-editor__hint {
   font-size: 0.8rem;
   color: var(--color-text-dim);
+}
+
+/* ─── Floating action button (FAB) ────────────────────────────────────────── */
+.fab {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 1.7rem;
+  font-weight: 300;
+  line-height: 1;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+  padding: 0;
+  transition: background var(--transition), transform var(--transition);
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.fab:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  transform: scale(1.08);
+}
+
+.fab:active {
+  transform: scale(0.94);
 }
 
 /* ─── Text controls ────────────────────────────────────────────────────────── */
@@ -486,22 +528,145 @@ a:hover { text-decoration: underline; }
   flex: 1;
 }
 
+.text-controls__more-toggle {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-dim);
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 6px 10px;
+  text-align: left;
+  transition: border-color var(--transition), color var(--transition);
+  min-height: 36px;
+}
+
+.text-controls__more-toggle:hover {
+  border-color: var(--color-primary-hover);
+  color: var(--color-text);
+}
+
 /* ─── Export ───────────────────────────────────────────────────────────────── */
 .export-button {
   margin-top: auto;
   padding-top: 8px;
 }
 
+/* ─── Layer chips bar (mobile only) ───────────────────────────────────────── */
+.layer-chips-bar {
+  display: none; /* shown only on mobile via media query */
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  min-height: 60px;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.layer-chips {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  overflow-x: auto;
+  flex: 1;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.layer-chips::-webkit-scrollbar {
+  height: 3px;
+}
+.layer-chips::-webkit-scrollbar-track {
+  background: transparent;
+}
+.layer-chips::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+.layer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 14px;
+  height: 44px;
+  border-radius: 22px;
+  background: var(--color-surface2);
+  border: 1.5px solid var(--color-border);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  transition: border-color var(--transition), background var(--transition);
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.layer-chip:hover {
+  border-color: var(--color-primary-hover);
+}
+
+.layer-chip--active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 15%, var(--color-surface2));
+}
+
+.layer-chip__label {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layer-chip__delete {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color var(--transition), background var(--transition);
+  touch-action: manipulation;
+}
+
+.layer-chip__delete:hover {
+  color: var(--color-danger);
+  background: rgba(255, 85, 85, 0.15);
+}
+
+.layer-chips__empty {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+  font-style: italic;
+}
+
+/* ─── Bottom sheet (mobile only) ──────────────────────────────────────────── */
+.bottom-sheet {
+  display: none; /* shown only on mobile via media query */
+}
+
+.bottom-sheet-backdrop {
+  display: none; /* shown only on mobile via media query */
+}
+
 /* ─── Responsive / mobile ──────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .app__workspace {
-    flex-direction: column;
+  /* Hide desktop sidebar — use bottom sheet instead */
+  .app__sidebar {
+    display: none;
   }
 
-  .app__sidebar {
-    width: 100%;
-    border-left: none;
-    border-top: 1px solid var(--color-border);
+  .app__workspace {
+    flex: 1;
+    overflow: hidden;
   }
 
   .canvas-editor {
@@ -518,5 +683,100 @@ a:hover { text-decoration: underline; }
 
   .app__title {
     font-size: 1.1rem;
+  }
+
+  /* Enlarge touch targets for timeline thumbs */
+  .timeline__thumb {
+    min-width: 52px;
+    min-height: 48px;
+    padding: 6px;
+  }
+
+  .timeline__strip {
+    gap: 8px;
+    padding: 0 12px 8px;
+  }
+
+  /* Larger buttons overall */
+  .btn {
+    min-height: 44px;
+  }
+
+  /* Layer chips bar — shown on mobile */
+  .layer-chips-bar {
+    display: flex;
+  }
+
+  /* Bottom sheet — shown on mobile */
+  .bottom-sheet {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 72vh;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: 16px 16px 0 0;
+    z-index: 50;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 -6px 28px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+  }
+
+  .bottom-sheet--open {
+    transform: translateY(0);
+  }
+
+  .bottom-sheet__handle-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 0 6px;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  .bottom-sheet__handle {
+    width: 36px;
+    height: 4px;
+    background: var(--color-border);
+    border-radius: 2px;
+  }
+
+  .bottom-sheet__content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Bottom sheet backdrop */
+  .bottom-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .bottom-sheet-backdrop--visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Reduce bottom sheet's export button top margin */
+  .bottom-sheet__content .export-button {
+    margin-top: 4px;
+    padding-top: 4px;
   }
 }

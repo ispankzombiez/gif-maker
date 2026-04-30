@@ -44,7 +44,7 @@ function EditorLayout() {
     if (!hasFrames && isPlaying) {
       stopPreview();
     }
-  }, [hasFrames]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasFrames, isPlaying, stopPreview]);
 
   // Auto-open the panel on mobile when a layer is selected
   useEffect(() => {

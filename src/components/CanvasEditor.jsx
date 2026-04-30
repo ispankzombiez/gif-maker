@@ -3,6 +3,8 @@
  *
  * Renders the current GIF frame onto an HTML Canvas and draws all active
  * text layers on top.  The user can drag the selected layer to reposition it.
+ * Tapping a text layer directly on canvas selects it.
+ * A floating "+" button lets users add new text layers without scrolling.
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
@@ -87,8 +89,8 @@ export function renderFrameWithLayers(ctx, imageData, textLayers, frameIndex, wi
   }
 }
 
-export default function CanvasEditor() {
-  const { state, updateLayerFramePos } = useProject();
+export default function CanvasEditor({ onAddLayer, onLayerSelected }) {
+  const { state, updateLayerFramePos, selectLayer } = useProject();
   const { frames, currentFrameIndex, width, height, textLayers, selectedLayerId } = state;
   const canvasRef = useRef(null);
   const dragging = useRef(false);
@@ -151,8 +153,52 @@ export default function CanvasEditor() {
   };
 
   const onPointerDownCanvas = (e) => {
-    // If clicking on the canvas while no layer is selected, do nothing.
-    // If a layer is selected and active, start dragging.
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Convert pointer position to canvas pixel coordinates
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = width / rect.width;
+    const scaleY = height / rect.height;
+    const tapX = (e.clientX - rect.left) * scaleX;
+    const tapY = (e.clientY - rect.top) * scaleY;
+
+    const ctx = canvas.getContext('2d');
+    const activeLayers = textLayers.filter(
+      (l) => l.text && currentFrameIndex >= l.startFrame && currentFrameIndex <= l.endFrame
+    );
+
+    // Test layers in reverse draw order (topmost first)
+    for (let i = activeLayers.length - 1; i >= 0; i--) {
+      const layer = activeLayers[i];
+      const layerPos = getLayerPositionForFrame(layer, currentFrameIndex);
+      const lx = (layerPos.x / 100) * width;
+      const ly = (layerPos.y / 100) * height;
+      const fontSize = layer.fontSize ?? 24;
+      ctx.font = `bold ${fontSize}px ${layer.fontFamily ?? 'Arial'}`;
+      const metrics = ctx.measureText(layer.text);
+      const pad = fontSize * 0.3;
+      const bw = metrics.width + pad * 2;
+      const bh = fontSize + pad * 2;
+
+      if (
+        tapX >= lx - bw / 2 && tapX <= lx + bw / 2 &&
+        tapY >= ly - bh / 2 && tapY <= ly + bh / 2
+      ) {
+        if (layer.id === selectedLayerId) {
+          // Already selected — start dragging
+          dragging.current = true;
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } else {
+          // Tap-to-select: switch to this layer
+          selectLayer(layer.id);
+          onLayerSelected?.();
+        }
+        return;
+      }
+    }
+
+    // Didn't hit any text layer — if selected layer is active, drag from anywhere
     if (selectedActiveOnFrame) {
       dragging.current = true;
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -167,20 +213,32 @@ export default function CanvasEditor() {
 
   return (
     <div className="canvas-editor">
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        style={{ width: displayWidth, height: displayHeight, touchAction: 'none' }}
-        onPointerDown={onPointerDownCanvas}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        className="canvas-editor__canvas"
-        aria-label="GIF frame editor – drag selected text layer to reposition"
-      />
+      <div className="canvas-editor__canvas-wrap">
+        <canvas
+          ref={canvasRef}
+          width={width}
+          height={height}
+          style={{ width: displayWidth, height: displayHeight, touchAction: 'none' }}
+          onPointerDown={onPointerDownCanvas}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          className="canvas-editor__canvas"
+          aria-label="GIF frame editor – tap text to select, drag to reposition"
+        />
+        {onAddLayer && (
+          <button
+            className="fab"
+            onClick={onAddLayer}
+            title="Add a new text layer"
+            aria-label="Add text layer"
+          >
+            +
+          </button>
+        )}
+      </div>
       {selectedActiveOnFrame && selectedLayer?.text && (
         <p className="canvas-editor__hint">
-          💬 Drag the selected text to reposition it on this frame only
+          💬 Drag text to reposition on this frame
         </p>
       )}
     </div>

@@ -31,6 +31,7 @@ import Timeline from './components/Timeline';
 import CanvasEditor from './components/CanvasEditor';
 import TextControls from './components/TextControls';
 import ExportButton from './components/ExportButton';
+import ProjectIO from './components/ProjectIO';
 
 function EditorLayout() {
   const { state, reset, addLayer, setCurrentFrame } = useProject();
@@ -128,6 +129,7 @@ function EditorLayout() {
           {hasFrames && (
             <>
               <ExportButton />
+              <ProjectIO />
               <button
                 className={`btn ${isPlaying ? 'btn--primary' : 'btn--secondary'}`}
                 onClick={togglePreview}
@@ -151,7 +153,13 @@ function EditorLayout() {
       {/* ── Upload prompt ──────────────────────────────────────────── */}
       {!hasFrames && (
         <main className="app__upload">
-          <Uploader />
+          <div className="app__upload-options">
+            <Uploader />
+            <div className="app__upload-divider">
+              <span>or</span>
+            </div>
+            <ProjectIO />
+          </div>
         </main>
       )}
 

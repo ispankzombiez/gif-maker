@@ -210,6 +210,20 @@ function reducer(state, action) {
         },
       };
 
+    case 'LOAD_PROJECT':
+      return {
+        ...initialState,
+        frames: action.frames,
+        width: action.width,
+        height: action.height,
+        gifFileName: action.gifFileName ?? '',
+        currentFrameIndex: action.currentFrameIndex ?? 0,
+        textLayers: action.textLayers ?? [],
+        selectedLayerId: null,
+        nextLayerId: action.nextLayerId ?? 1,
+        defaultLayerSettings: action.defaultLayerSettings ?? pickDefaultSettings(DEFAULT_TEXT_LAYER_PROPS),
+      };
+
     case 'RESET':
       return { ...initialState };
 
@@ -261,6 +275,10 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'UPDATE_DEFAULT_SETTINGS', changes });
   }, []);
 
+  const loadProject = useCallback((projectState) => {
+    dispatch({ type: 'LOAD_PROJECT', ...projectState });
+  }, []);
+
   const reset = useCallback(() => {
     dispatch({ type: 'RESET' });
   }, []);
@@ -278,6 +296,7 @@ export function ProjectProvider({ children }) {
         moveAnchor,
         selectLayer,
         updateDefaultSettings,
+        loadProject,
         reset,
         DEFAULT_TEXT_LAYER_PROPS,
       }}

@@ -171,8 +171,10 @@ function reducer(state, action) {
       };
 
     case 'MOVE_ANCHOR': {
-      // Move anchor and shift all text positions by the same delta so text
-      // maintains its relative offset from the anchor on every frame.
+      // Move anchor and shift text positions from the current frame onwards so
+      // that only frames at/after frameIndex are affected.  Earlier frames that
+      // have no explicit keyframe are pinned at their current resolved position
+      // (frame 0) so they don't follow the updated layer.x/y default.
       return {
         ...state,
         textLayers: state.textLayers.map((l) => {
@@ -182,16 +184,46 @@ function reducer(state, action) {
           const newAnchorY = clamp(action.anchorY);
           const dx = newAnchorX - (l.anchorX ?? l.x ?? 50);
           const dy = newAnchorY - (l.anchorY ?? l.y ?? 90);
+          const frameIndex = action.frameIndex ?? 0;
+          const currentPositions = l.positions ?? {};
+          const oldX = l.x ?? 50;
+          const oldY = l.y ?? 90;
+
+          // Resolve the text position at frameIndex so we can create a keyframe there.
+          const resolved = getLayerPositionForFrame(l, frameIndex);
+          const resolvedX = resolved.x;
+          const resolvedY = resolved.y;
+
           const newPositions = {};
-          for (const [k, v] of Object.entries(l.positions ?? {})) {
-            newPositions[k] = { x: clamp(v.x + dx), y: clamp(v.y + dy) };
+
+          // If no explicit keyframe exists before frameIndex, pin frame 0 at the
+          // current default so earlier frames don't shift when layer.x/y updates.
+          if (frameIndex > 0) {
+            const hasEarlyKeyframe = Object.keys(currentPositions).some((k) => Number(k) < frameIndex);
+            if (!hasEarlyKeyframe) {
+              newPositions[0] = { x: oldX, y: oldY };
+            }
           }
+
+          // Carry over positions before frameIndex unchanged; shift those at/after.
+          for (const [k, v] of Object.entries(currentPositions)) {
+            const ki = Number(k);
+            if (ki < frameIndex) {
+              newPositions[ki] = v;
+            } else {
+              newPositions[ki] = { x: clamp(v.x + dx), y: clamp(v.y + dy) };
+            }
+          }
+
+          // Always create/update a keyframe at frameIndex with the shifted position.
+          newPositions[frameIndex] = { x: clamp(resolvedX + dx), y: clamp(resolvedY + dy) };
+
           return {
             ...l,
             anchorX: newAnchorX,
             anchorY: newAnchorY,
-            x: clamp((l.x ?? 50) + dx),
-            y: clamp((l.y ?? 90) + dy),
+            x: clamp(oldX + dx),
+            y: clamp(oldY + dy),
             positions: newPositions,
           };
         }),
@@ -263,8 +295,8 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'UPDATE_LAYER_FRAME_POS', id, frameIndex, x, y });
   }, []);
 
-  const moveAnchor = useCallback((id, anchorX, anchorY) => {
-    dispatch({ type: 'MOVE_ANCHOR', id, anchorX, anchorY });
+  const moveAnchor = useCallback((id, anchorX, anchorY, frameIndex) => {
+    dispatch({ type: 'MOVE_ANCHOR', id, anchorX, anchorY, frameIndex });
   }, []);
 
   const selectLayer = useCallback((id) => {

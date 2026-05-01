@@ -320,7 +320,7 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
       const pos = getCanvasPos(e.clientX, e.clientY);
 
       if (ptr.current.mode === 'anchor' && ptr.current.hitLayerId) {
-        moveAnchor(ptr.current.hitLayerId, pos.x, pos.y);
+        moveAnchor(ptr.current.hitLayerId, pos.x, pos.y, currentFrameIndex);
       } else if (ptr.current.mode === 'text' && ptr.current.hitLayerId) {
         updateLayerFramePos(ptr.current.hitLayerId, currentFrameIndex, pos.x, pos.y);
       } else if (ptr.current.mode === 'empty' && selectedLayerId && selectedActiveOnFrame) {

@@ -284,18 +284,18 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
         startPy: py,
       };
 
-      // Determine what was tapped (but don't commit to select/drag yet)
-      if (hitTestAnchor(px, py)) {
+      // Determine what was tapped (but don't commit to select/drag yet).
+      // Text is checked before anchor so that dragging on text always creates
+      // a per-frame keyframe even when the anchor circle overlaps the text.
+      const hit = hitTestText(px, py);
+      if (hit) {
+        ptr.current.mode = 'text';
+        ptr.current.hitLayerId = hit.id;
+      } else if (hitTestAnchor(px, py)) {
         ptr.current.mode = 'anchor';
         ptr.current.hitLayerId = selectedLayerId;
       } else {
-        const hit = hitTestText(px, py);
-        if (hit) {
-          ptr.current.mode = 'text';
-          ptr.current.hitLayerId = hit.id;
-        } else {
-          ptr.current.mode = 'empty';
-        }
+        ptr.current.mode = 'empty';
       }
     },
     [isPlaying, getCanvasPx, hitTestAnchor, hitTestText, selectedLayerId]

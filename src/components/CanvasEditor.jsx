@@ -368,7 +368,7 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
       // a per-frame keyframe even when the anchor circle overlaps the layer.
       const hit = hitTestLayer(px, py);
       if (hit) {
-        ptr.current.mode = 'text';
+        ptr.current.mode = 'layer';
         ptr.current.hitLayerId = hit.id;
       } else if (hitTestAnchor(px, py)) {
         ptr.current.mode = 'anchor';
@@ -400,10 +400,10 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
 
       if (ptr.current.mode === 'anchor' && ptr.current.hitLayerId) {
         moveAnchor(ptr.current.hitLayerId, pos.x, pos.y, currentFrameIndex);
-      } else if (ptr.current.mode === 'text' && ptr.current.hitLayerId) {
+      } else if (ptr.current.mode === 'layer' && ptr.current.hitLayerId) {
         updateLayerFramePos(ptr.current.hitLayerId, currentFrameIndex, pos.x, pos.y);
       } else if (ptr.current.mode === 'empty' && selectedLayerId && selectedActiveOnFrame) {
-        // Dragging from empty space moves selected text
+        // Dragging from empty space moves the selected layer
         updateLayerFramePos(selectedLayerId, currentFrameIndex, pos.x, pos.y);
       }
     },
@@ -415,7 +415,7 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
       if (!ptr.current.isDragging) {
         // It was a tap — handle selection
         const { mode, hitLayerId } = ptr.current;
-        if (mode === 'text' && hitLayerId) {
+        if (mode === 'layer' && hitLayerId) {
           selectLayer(hitLayerId);
           onLayerSelected?.();
         } else if (mode === 'empty') {

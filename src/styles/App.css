@@ -415,6 +415,13 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.05em;
 }
 
+.text-controls__add-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .text-controls__add-btn {
   font-size: 0.8rem;
   padding: 5px 10px;

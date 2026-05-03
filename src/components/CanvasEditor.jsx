@@ -2,17 +2,17 @@
  * CanvasEditor.jsx
  *
  * Renders the current GIF frame onto an HTML Canvas and draws all active
- * text layers on top.  Touch/pointer interactions:
- *   - Single pointer drag → reposition selected text (only after movement threshold)
- *   - Tap on text layer → select it
+ * text and image layers on top.  Touch/pointer interactions:
+ *   - Single pointer drag → reposition selected layer (only after movement threshold)
+ *   - Tap on layer → select it
  *   - Tap on empty space → deselect
  *   - Tap on anchor circle → start anchor drag
- *   - Two-finger pinch → resize text
- *   - Two-finger rotation → rotate text
+ *   - Two-finger pinch → resize text (font size) or image (width)
+ *   - Two-finger rotation → rotate layer
  * A floating "+" button lets users add new text layers.
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { useProject, getLayerPositionForFrame } from '../store/projectStore';
 
 const DRAG_THRESHOLD_PX = 6;
@@ -86,6 +86,41 @@ function drawTextLayer(ctx, layer, width, height, isSelected) {
   ctx.restore();
 }
 
+/** Apply rotation and mirror transforms, draw image centred at origin. */
+function drawImageLayer(ctx, layer, width, height, isSelected, imageCache) {
+  const img = imageCache?.get(layer.src);
+  if (!img || !img.complete || img.naturalWidth === 0) return;
+
+  const x = (layer.x / 100) * width;
+  const y = (layer.y / 100) * height;
+  const imgW = ((layer.widthPct ?? 30) / 100) * width;
+  const imgH = imgW * (layer.aspectRatio ?? 1);
+  const angleRad = ((layer.angle ?? 0) * Math.PI) / 180;
+  const mirrorX = layer.mirrorX ?? false;
+  const mirrorY = layer.mirrorY ?? false;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angleRad);
+  if (mirrorX) ctx.scale(-1, 1);
+  if (mirrorY) ctx.scale(1, -1);
+
+  ctx.drawImage(img, -imgW / 2, -imgH / 2, imgW, imgH);
+
+  // Selection border
+  if (isSelected) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(124,92,252,0.85)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.shadowColor = 'transparent';
+    ctx.strokeRect(-imgW / 2, -imgH / 2, imgW, imgH);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
 /** Draw the anchor circle for the selected layer. */
 function drawAnchor(ctx, layer, width, height) {
   const ax = ((layer.anchorX ?? layer.x ?? 50) / 100) * width;
@@ -114,22 +149,29 @@ function drawAnchor(ctx, layer, width, height) {
 }
 
 /**
- * Render a GIF frame plus all text layers that are active at `frameIndex`
- * onto the given canvas context.
+ * Render a GIF frame plus all active layers (text and image) onto the given
+ * canvas context.
  *
  * Called by CanvasEditor (preview) and ExportButton (export pipeline).
+ * Pass an optional `imageCache` Map (src → HTMLImageElement) for image layers.
  */
-export function renderFrameWithLayers(ctx, imageData, textLayers, frameIndex, width, height) {
+export function renderFrameWithLayers(ctx, imageData, textLayers, frameIndex, width, height, imageCache) {
   ctx.clearRect(0, 0, width, height);
   ctx.putImageData(imageData, 0, 0);
 
   const activeLayers = (textLayers ?? []).filter(
-    (l) => l.text && frameIndex >= l.startFrame && frameIndex <= l.endFrame
+    (l) => (l.type === 'image' ? l.src : l.text) &&
+            frameIndex >= l.startFrame &&
+            frameIndex <= l.endFrame
   );
 
   for (const layer of activeLayers) {
     const pos = getLayerPositionForFrame(layer, frameIndex);
-    drawTextLayer(ctx, { ...layer, ...pos }, width, height, false);
+    if (layer.type === 'image') {
+      drawImageLayer(ctx, { ...layer, ...pos }, width, height, false, imageCache);
+    } else {
+      drawTextLayer(ctx, { ...layer, ...pos }, width, height, false);
+    }
   }
 }
 
@@ -137,6 +179,11 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
   const { state, updateLayerFramePos, moveAnchor, selectLayer, updateLayer } = useProject();
   const { frames, currentFrameIndex, width, height, textLayers, selectedLayerId } = state;
   const canvasRef = useRef(null);
+
+  // Image cache: src (data URL) → HTMLImageElement
+  const imageCache = useRef(new Map());
+  // Bumped whenever a new image finishes loading to trigger a re-render
+  const [imageCacheVersion, setImageCacheVersion] = useState(0);
 
   // Pointer drag state
   const ptr = useRef({
@@ -158,28 +205,50 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
     currentFrameIndex >= selectedLayer.startFrame &&
     currentFrameIndex <= selectedLayer.endFrame;
 
-  // Re-render whenever frame or layers change
+  // Keep image cache in sync with image layers; bump version to force re-render when loaded
+  useEffect(() => {
+    const cache = imageCache.current;
+    textLayers.forEach((layer) => {
+      if (layer.type === 'image' && layer.src && !cache.has(layer.src)) {
+        const img = new Image();
+        img.onload = () => {
+          cache.set(layer.src, img);
+          setImageCacheVersion((v) => v + 1);
+        };
+        img.src = layer.src;
+      }
+    });
+  }, [textLayers]);
+
+  // Re-render whenever frame, layers, or image cache changes
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !frame?.imageData) return;
     const ctx = canvas.getContext('2d');
+    const cache = imageCache.current;
 
     ctx.clearRect(0, 0, width, height);
     ctx.putImageData(frame.imageData, 0, 0);
 
     const activeLayers = textLayers.filter(
-      (l) => l.text && currentFrameIndex >= l.startFrame && currentFrameIndex <= l.endFrame
+      (l) => (l.type === 'image' ? l.src : l.text) &&
+              currentFrameIndex >= l.startFrame &&
+              currentFrameIndex <= l.endFrame
     );
     for (const layer of activeLayers) {
       const pos = getLayerPositionForFrame(layer, currentFrameIndex);
-      drawTextLayer(ctx, { ...layer, ...pos }, width, height, layer.id === selectedLayerId && !isPlaying);
+      if (layer.type === 'image') {
+        drawImageLayer(ctx, { ...layer, ...pos }, width, height, layer.id === selectedLayerId && !isPlaying, cache);
+      } else {
+        drawTextLayer(ctx, { ...layer, ...pos }, width, height, layer.id === selectedLayerId && !isPlaying);
+      }
     }
 
     // Draw anchor for selected layer (hidden during preview playback)
     if (selectedLayer && selectedActiveOnFrame && !isPlaying) {
       drawAnchor(ctx, selectedLayer, width, height);
     }
-  }, [frame, textLayers, selectedLayerId, currentFrameIndex, width, height, selectedLayer, selectedActiveOnFrame, isPlaying]);
+  }, [frame, textLayers, selectedLayerId, currentFrameIndex, width, height, selectedLayer, selectedActiveOnFrame, isPlaying, imageCacheVersion]);
 
   // ─── Coordinate helpers ──────────────────────────────────────────────────────
 
@@ -215,20 +284,21 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
     [width, height]
   );
 
-  /** Test if a tap hits a text layer. Returns layer or null. */
-  const hitTestText = useCallback(
+  /** Test if a tap hits a text or image layer. Returns layer or null. */
+  const hitTestLayer = useCallback(
     (tapPx, tapPy) => {
       const ctx = canvasRef.current?.getContext('2d');
       if (!ctx) return null;
       const activeLayers = textLayers.filter(
-        (l) => l.text && currentFrameIndex >= l.startFrame && currentFrameIndex <= l.endFrame
+        (l) => (l.type === 'image' ? l.src : l.text) &&
+                currentFrameIndex >= l.startFrame &&
+                currentFrameIndex <= l.endFrame
       );
       for (let i = activeLayers.length - 1; i >= 0; i--) {
         const layer = activeLayers[i];
         const pos = getLayerPositionForFrame(layer, currentFrameIndex);
         const lx = (pos.x / 100) * width;
         const ly = (pos.y / 100) * height;
-        const fontSize = layer.fontSize ?? 24;
         const angleRad = ((layer.angle ?? 0) * Math.PI) / 180;
 
         // Transform tap into layer's local (pre-rotation) space
@@ -239,14 +309,23 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
         const localX = dx * cos - dy * sin;
         const localY = dx * sin + dy * cos;
 
-        ctx.font = `bold ${fontSize}px ${layer.fontFamily ?? 'Arial'}`;
-        const metrics = ctx.measureText(layer.text);
-        const pad = fontSize * 0.3;
-        const bw = metrics.width + pad * 2;
-        const bh = fontSize + pad * 2;
+        if (layer.type === 'image') {
+          const imgW = ((layer.widthPct ?? 30) / 100) * width;
+          const imgH = imgW * (layer.aspectRatio ?? 1);
+          if (localX >= -imgW / 2 && localX <= imgW / 2 && localY >= -imgH / 2 && localY <= imgH / 2) {
+            return layer;
+          }
+        } else {
+          const fontSize = layer.fontSize ?? 24;
+          ctx.font = `bold ${fontSize}px ${layer.fontFamily ?? 'Arial'}`;
+          const metrics = ctx.measureText(layer.text);
+          const pad = fontSize * 0.3;
+          const bw = metrics.width + pad * 2;
+          const bh = fontSize + pad * 2;
 
-        if (localX >= -bw / 2 && localX <= bw / 2 && localY >= -bh / 2 && localY <= bh / 2) {
-          return layer;
+          if (localX >= -bw / 2 && localX <= bw / 2 && localY >= -bh / 2 && localY <= bh / 2) {
+            return layer;
+          }
         }
       }
       return null;
@@ -285,9 +364,9 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
       };
 
       // Determine what was tapped (but don't commit to select/drag yet).
-      // Text is checked before anchor so that dragging on text always creates
-      // a per-frame keyframe even when the anchor circle overlaps the text.
-      const hit = hitTestText(px, py);
+      // Layer is checked before anchor so that dragging on a layer always creates
+      // a per-frame keyframe even when the anchor circle overlaps the layer.
+      const hit = hitTestLayer(px, py);
       if (hit) {
         ptr.current.mode = 'text';
         ptr.current.hitLayerId = hit.id;
@@ -298,7 +377,7 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
         ptr.current.mode = 'empty';
       }
     },
-    [isPlaying, getCanvasPx, hitTestAnchor, hitTestText, selectedLayerId]
+    [isPlaying, getCanvasPx, hitTestAnchor, hitTestLayer, selectedLayerId]
   );
 
   const onPointerMove = useCallback(
@@ -363,6 +442,7 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
         initDist: Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY),
         initAngle: Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX) * (180 / Math.PI),
         initFontSize: selectedLayer.fontSize ?? 24,
+        initWidthPct: selectedLayer.widthPct ?? 30,
         initRotation: selectedLayer.angle ?? 0,
       };
     },
@@ -379,17 +459,24 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
       const curDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
       const curAngle = Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX) * (180 / Math.PI);
 
-      const { initDist, initAngle, initFontSize, initRotation } = touch2.current;
-
-      const newFontSize =
-        initDist > 0
-          ? Math.max(10, Math.min(120, Math.round(initFontSize * (curDist / initDist))))
-          : initFontSize;
+      const { initDist, initAngle, initFontSize, initWidthPct, initRotation } = touch2.current;
 
       const angleDelta = curAngle - initAngle;
       const newAngle = Math.round(initRotation + angleDelta);
 
-      updateLayer(selectedLayer.id, { fontSize: newFontSize, angle: newAngle });
+      if (selectedLayer.type === 'image') {
+        const newWidthPct =
+          initDist > 0
+            ? Math.max(5, Math.min(150, initWidthPct * (curDist / initDist)))
+            : initWidthPct;
+        updateLayer(selectedLayer.id, { widthPct: newWidthPct, angle: newAngle });
+      } else {
+        const newFontSize =
+          initDist > 0
+            ? Math.max(10, Math.min(120, Math.round(initFontSize * (curDist / initDist))))
+            : initFontSize;
+        updateLayer(selectedLayer.id, { fontSize: newFontSize, angle: newAngle });
+      }
     },
     [selectedLayer, updateLayer]
   );
@@ -425,9 +512,11 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
         />
 
       </div>
-      {selectedActiveOnFrame && selectedLayer?.text && !isPlaying && (
+      {selectedActiveOnFrame && (selectedLayer?.text || selectedLayer?.src) && !isPlaying && (
         <p className="canvas-editor__hint">
-          💬 Drag text or anchor to reposition · Pinch/rotate with two fingers
+          {selectedLayer.type === 'image'
+            ? '🖼 Drag image or anchor to reposition · Pinch/rotate with two fingers'
+            : '💬 Drag text or anchor to reposition · Pinch/rotate with two fingers'}
         </p>
       )}
     </div>

@@ -11,6 +11,7 @@ import React, { createContext, useContext, useReducer, useCallback } from 'react
 // ─── Default text layer properties ────────────────────────────────────────────
 
 export const DEFAULT_TEXT_LAYER_PROPS = {
+  type: 'text',
   text: '',
   x: 50,       // default x (% of canvas width) — used as fallback when no per-frame position exists
   y: 90,       // default y (% of canvas height) — used as fallback when no per-frame position exists
@@ -34,6 +35,24 @@ export const DEFAULT_TEXT_LAYER_PROPS = {
    * walk backwards to inherit from the nearest previous keyframe, then fall
    * back to the layer-level x/y defaults above.
    */
+  positions: {},
+};
+
+// ─── Default image layer properties ───────────────────────────────────────────
+
+export const DEFAULT_IMAGE_LAYER_PROPS = {
+  type: 'image',
+  src: null,        // data URL of the image
+  widthPct: 30,     // width as % of canvas width
+  aspectRatio: 1,   // height / width of original image
+  x: 50,
+  y: 50,
+  angle: 0,
+  mirrorX: false,
+  mirrorY: false,
+  anchorX: 50,
+  anchorY: 50,
+  anchorRadius: 18,
   positions: {},
 };
 
@@ -125,7 +144,27 @@ function reducer(state, action) {
       const newLayer = {
         ...DEFAULT_TEXT_LAYER_PROPS,
         ...state.defaultLayerSettings,
+        type: 'text',
         id,
+        startFrame: state.currentFrameIndex,
+        endFrame: Math.max(0, state.frames.length - 1),
+      };
+      return {
+        ...state,
+        textLayers: [...state.textLayers, newLayer],
+        selectedLayerId: id,
+        nextLayerId: id + 1,
+      };
+    }
+
+    case 'ADD_IMAGE_LAYER': {
+      const id = state.nextLayerId;
+      const newLayer = {
+        ...DEFAULT_IMAGE_LAYER_PROPS,
+        id,
+        src: action.src,
+        widthPct: action.widthPct ?? 30,
+        aspectRatio: action.aspectRatio ?? 1,
         startFrame: state.currentFrameIndex,
         endFrame: Math.max(0, state.frames.length - 1),
       };
@@ -283,6 +322,10 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'ADD_LAYER' });
   }, []);
 
+  const addImageLayer = useCallback((src, widthPct, aspectRatio) => {
+    dispatch({ type: 'ADD_IMAGE_LAYER', src, widthPct, aspectRatio });
+  }, []);
+
   const deleteLayer = useCallback((id) => {
     dispatch({ type: 'DELETE_LAYER', id });
   }, []);
@@ -322,6 +365,7 @@ export function ProjectProvider({ children }) {
         setFrames,
         setCurrentFrame,
         addLayer,
+        addImageLayer,
         deleteLayer,
         updateLayer,
         updateLayerFramePos,

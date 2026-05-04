@@ -134,7 +134,7 @@ function EditorLayout() {
         <nav className="app__nav">
           {hasFrames && (
             <>
-              <ExportButton />
+              <ExportButton previewSpeed={previewSpeed} />
               <ProjectIO />
               <div className="preview-speed-row">
                 <label className="preview-speed-row__label" htmlFor="preview-speed">

@@ -3,9 +3,13 @@
  *
  * Horizontal scrollable strip showing a thumbnail for every GIF frame.
  * The active frame is highlighted; clicking a thumbnail makes it active.
+ *
+ * Controls below the strip allow:
+ *   - Adding a custom frame from a device image file
+ *   - Moving the current frame to an arbitrary position
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useProject } from '../store/projectStore';
 
 /** Renders a single frame thumbnail onto a small canvas. */
@@ -42,9 +46,11 @@ function FrameThumb({ frame, index, isActive, onClick }) {
 }
 
 export default function Timeline() {
-  const { state, setCurrentFrame } = useProject();
-  const { frames, currentFrameIndex } = state;
+  const { state, setCurrentFrame, insertFrame, reorderFrame } = useProject();
+  const { frames, currentFrameIndex, width, height } = state;
   const stripRef = useRef(null);
+  const addFrameInputRef = useRef(null);
+  const [moveTarget, setMoveTarget] = useState('');
 
   // Auto-scroll active frame into view
   useEffect(() => {
@@ -55,6 +61,45 @@ export default function Timeline() {
       active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
     }
   }, [currentFrameIndex]);
+
+  const handleAddFrameFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        // Scale image to GIF dimensions (contain + black background)
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+        const scale = Math.min(width / img.width, height / img.height);
+        const sw = img.width * scale;
+        const sh = img.height * scale;
+        ctx.drawImage(img, (width - sw) / 2, (height - sh) / 2, sw, sh);
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const avgDelay = Math.round(frames.reduce((s, f) => s + f.delay, 0) / frames.length);
+        insertFrame({ imageData, delay: avgDelay }, currentFrameIndex + 1);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleMoveFrame = () => {
+    const target = parseInt(moveTarget, 10) - 1; // 1-indexed → 0-indexed
+    setMoveTarget('');
+    if (isNaN(target) || target < 0 || target >= frames.length || target === currentFrameIndex) return;
+    reorderFrame(currentFrameIndex, target);
+  };
 
   if (!frames.length) return null;
 
@@ -71,10 +116,53 @@ export default function Timeline() {
           />
         ))}
       </div>
-      <p className="timeline__info">
-        Frame {currentFrameIndex + 1} / {frames.length} &nbsp;·&nbsp;
-        {frames[currentFrameIndex]?.delay} ms
-      </p>
+
+      <div className="timeline__controls">
+        <p className="timeline__info">
+          Frame {currentFrameIndex + 1} / {frames.length} &nbsp;·&nbsp;
+          {frames[currentFrameIndex]?.delay} ms
+        </p>
+
+        <button
+          className="btn btn--secondary timeline__add-btn"
+          onClick={() => addFrameInputRef.current?.click()}
+          title="Insert a frame from an image file after the current frame"
+        >
+          🖼 Add Frame
+        </button>
+        <input
+          ref={addFrameInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleAddFrameFile}
+          style={{ display: 'none' }}
+        />
+
+        <div className="timeline__move-row">
+          <label htmlFor="timeline-move-input" className="timeline__move-label">
+            Move to:
+          </label>
+          <input
+            id="timeline-move-input"
+            className="timeline__move-input"
+            type="number"
+            min={1}
+            max={frames.length}
+            value={moveTarget}
+            onChange={(e) => setMoveTarget(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleMoveFrame()}
+            placeholder={currentFrameIndex + 1}
+            aria-label="Target frame position"
+          />
+          <button
+            className="btn btn--secondary timeline__move-btn"
+            onClick={handleMoveFrame}
+            title="Move current frame to the specified position"
+          >
+            Go
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

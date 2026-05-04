@@ -11,8 +11,9 @@
  *   3     — restore to the canvas state from before the previous frame was drawn
  *
  * Usage:
- *   const { extractFrames, loading, error } = useGifFrames();
- *   await extractFrames(file);   // triggers store.setFrames(…)
+ *   const { extractFrames, extractImageAsFrame, loading, error } = useGifFrames();
+ *   await extractFrames(file);         // GIF → triggers store.setFrames(…)
+ *   await extractImageAsFrame(file);   // image → single-frame store.setFrames(…)
  */
 
 import { useCallback, useState } from 'react';
@@ -22,6 +23,42 @@ export function useGifFrames() {
   const { setFrames } = useProject();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const extractImageAsFrame = useCallback(
+    async (file) => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('Failed to load image.'));
+          img.src = url;
+        });
+
+        URL.revokeObjectURL(url);
+
+        const { width, height } = img;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, width, height);
+        setFrames([{ imageData, delay: 100 }], width, height, file.name);
+      } catch (err) {
+        console.error('Image loading error:', err);
+        setError('Failed to load image. Please try another file.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setFrames]
+  );
 
   const extractFrames = useCallback(
     async (file) => {
@@ -120,5 +157,5 @@ export function useGifFrames() {
     [setFrames]
   );
 
-  return { extractFrames, loading, error };
+  return { extractFrames, extractImageAsFrame, loading, error };
 }

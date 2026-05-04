@@ -26,7 +26,7 @@ const FORMAT_EXT = { gif: 'gif', webm: 'webm', mp4: 'mp4', mov: 'mov' };
 const WEBM_MIME_TYPES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
 const MP4_MIME_TYPES = ['video/mp4;codecs=avc1', 'video/mp4'];
 
-export default function ExportButton({ previewSpeed = 1.0 }) {
+export default function ExportButton() {
   const { state } = useProject();
   const { frames, width, height, textLayers, gifFileName } = state;
 
@@ -48,7 +48,7 @@ export default function ExportButton({ previewSpeed = 1.0 }) {
     setFileName(gifFileName ? gifFileName.replace(/\.[^.]+$/, '') : 'edited');
   }, [gifFileName]);
 
-  const openModal = () => { setExportSpeed(previewSpeed); setShowModal(true); };
+  const openModal = () => { setShowModal(true); };
   const closeModal = () => { if (!exporting) setShowModal(false); };
 
   /** Pre-load all image layers into a Map and return it. */

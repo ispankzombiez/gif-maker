@@ -900,6 +900,12 @@ a:hover { text-decoration: underline; }
   gap: 8px;
 }
 
+.frame-editor__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .frame-editor__title {
   font-size: 0.95rem;
   font-weight: 700;
@@ -911,6 +917,23 @@ a:hover { text-decoration: underline; }
 .frame-editor__count {
   font-size: 0.75rem;
   color: var(--color-text-dim);
+}
+
+.frame-editor__add-btn {
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: var(--color-surface2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition), border-color var(--transition);
+}
+.frame-editor__add-btn:hover {
+  background: var(--color-border);
+  border-color: var(--color-accent);
 }
 
 .frame-editor__list {
@@ -993,6 +1016,22 @@ a:hover { text-decoration: underline; }
   font-size: 0.72rem;
   color: var(--color-text-dim);
   flex-shrink: 0;
+}
+
+.frame-editor__pos-input {
+  width: 42px;
+  padding: 4px 4px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.8rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+.frame-editor__pos-input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
 }
 
 .frame-editor__actions {

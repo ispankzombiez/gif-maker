@@ -17,6 +17,7 @@ function isGif(file) {
 }
 
 function isImage(file) {
+  if (isGif(file)) return false;
   return file.type?.startsWith('image/') || /\.(png|jpe?g|webp|bmp|avif)$/i.test(file.name ?? '');
 }
 

@@ -1,105 +1,322 @@
 /**
  * ExportButton.jsx
  *
- * Renders each frame with its active text layers onto an off-screen canvas,
- * then feeds all frames into gif.js to produce a downloadable GIF.
+ * Opens an export-settings modal where the user can choose:
+ *   – File name
+ *   – Format: GIF (via gif.js) or WebM video (via MediaRecorder)
+ *   – GIF quality (1 = best / slowest … 20 = fastest / largest)
  *
  * gif.js relies on a Web Worker; the worker script must be served from the
  * Vite public directory at the configured base path.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useProject } from '../store/projectStore';
 import { renderFrameWithLayers } from './CanvasEditor';
 
+function getGifQualityLabel(q) {
+  if (q === 1) return 'Best';
+  if (q <= 5) return 'High';
+  if (q <= 12) return 'Balanced';
+  return 'Fast';
+}
+
 export default function ExportButton() {
   const { state } = useProject();
-  const { frames, width, height, textLayers } = state;
+  const { frames, width, height, textLayers, gifFileName } = state;
+
+  const [showModal, setShowModal] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState('');
+
+  // Settings
+  const defaultName = gifFileName ? gifFileName.replace(/\.[^.]+$/, '') : 'edited';
+  const [fileName, setFileName] = useState(defaultName);
+  const [format, setFormat] = useState('gif');
+  const [gifQuality, setGifQuality] = useState(10);
+
+  // Sync default filename when a new GIF is loaded
+  useEffect(() => {
+    setFileName(gifFileName ? gifFileName.replace(/\.[^.]+$/, '') : 'edited');
+  }, [gifFileName]);
+
+  const openModal = () => setShowModal(true);
+  const closeModal = () => { if (!exporting) setShowModal(false); };
+
+  /** Pre-load all image layers into a Map and return it. */
+  const buildImageCache = useCallback(async () => {
+    const imageCache = new Map();
+    const imageLayers = textLayers.filter((l) => l.type === 'image' && l.src);
+    await Promise.all(
+      imageLayers.map(
+        (layer) =>
+          new Promise((resolve) => {
+            if (imageCache.has(layer.src)) { resolve(); return; }
+            const img = new Image();
+            img.onload = () => { imageCache.set(layer.src, img); resolve(); };
+            img.onerror = resolve;
+            img.src = layer.src;
+          })
+      )
+    );
+    return imageCache;
+  }, [textLayers]);
+
+  /** Export as GIF using gif.js. */
+  const exportGif = useCallback(async (imageCache) => {
+    const GIF = (await import('gif.js')).default;
+    const gif = new GIF({
+      workers: 2,
+      quality: gifQuality,
+      width,
+      height,
+      workerScript: `${import.meta.env.BASE_URL}gif.worker.js`,
+    });
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width;
+    offscreen.height = height;
+    const ctx = offscreen.getContext('2d');
+
+    frames.forEach((frame, i) => {
+      renderFrameWithLayers(ctx, frame.imageData, textLayers, i, width, height, imageCache);
+      gif.addFrame(offscreen, { copy: true, delay: frame.delay });
+    });
+
+    gif.on('progress', (p) => {
+      setProgress(Math.round(p * 100));
+      setProgressLabel(`Encoding… ${Math.round(p * 100)}%`);
+    });
+
+    await new Promise((resolve, reject) => {
+      gif.on('finished', (blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${fileName || 'edited'}.gif`;
+        a.click();
+        URL.revokeObjectURL(url);
+        resolve();
+      });
+      gif.on('error', reject);
+      gif.render();
+    });
+  }, [frames, width, height, textLayers, fileName, gifQuality]);
+
+  /** Export as WebM video using canvas.captureStream + MediaRecorder. */
+  const exportWebM = useCallback(async (imageCache) => {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width;
+    offscreen.height = height;
+    const ctx = offscreen.getContext('2d');
+
+    // Pick a supported mimeType
+    const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(
+      (m) => MediaRecorder.isTypeSupported(m)
+    );
+    if (!mimeType) {
+      throw new Error(
+        'WebM recording is not supported in this browser. Your browser does not support any of the required WebM codecs (VP8/VP9). Please use GIF format instead.'
+      );
+    }
+
+    const stream = offscreen.captureStream(0);
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    await new Promise((resolve, reject) => {
+      recorder.onerror = (e) => reject(e.error ?? new Error('MediaRecorder error'));
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${fileName || 'edited'}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+
+      recorder.start();
+
+      let i = 0;
+      const track = stream.getVideoTracks()[0];
+
+      const renderNext = () => {
+        if (i >= frames.length) {
+          recorder.stop();
+          return;
+        }
+        const frame = frames[i];
+        renderFrameWithLayers(ctx, frame.imageData, textLayers, i, width, height, imageCache);
+        if (track.requestFrame) track.requestFrame();
+        setProgress(Math.round(((i + 1) / frames.length) * 100));
+        setProgressLabel(`Rendering… ${i + 1} / ${frames.length}`);
+        setTimeout(() => { i++; renderNext(); }, frame.delay ?? 100);
+      };
+
+      renderNext();
+    });
+  }, [frames, width, height, textLayers, fileName]);
 
   const handleExport = useCallback(async () => {
     if (!frames.length) return;
     setExporting(true);
     setProgress(0);
+    setProgressLabel('Preparing…');
 
     try {
-      // Pre-load all image layers before starting export
-      const imageCache = new Map();
-      const imageLayers = textLayers.filter((l) => l.type === 'image' && l.src);
-      await Promise.all(
-        imageLayers.map(
-          (layer) =>
-            new Promise((resolve) => {
-              if (imageCache.has(layer.src)) {
-                resolve();
-                return;
-              }
-              const img = new Image();
-              img.onload = () => {
-                imageCache.set(layer.src, img);
-                resolve();
-              };
-              img.onerror = resolve; // don't fail export on a bad image
-              img.src = layer.src;
-            })
-        )
-      );
-
-      const GIF = (await import('gif.js')).default;
-
-      const gif = new GIF({
-        workers: 2,
-        quality: 10,
-        width,
-        height,
-        workerScript: `${import.meta.env.BASE_URL}gif.worker.js`,
-      });
-
-      const offscreen = document.createElement('canvas');
-      offscreen.width = width;
-      offscreen.height = height;
-      const ctx = offscreen.getContext('2d');
-
-      frames.forEach((frame, i) => {
-        renderFrameWithLayers(ctx, frame.imageData, textLayers, i, width, height, imageCache);
-        gif.addFrame(offscreen, { copy: true, delay: frame.delay });
-      });
-
-      gif.on('progress', (p) => setProgress(Math.round(p * 100)));
-
-      gif.on('finished', (blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'edited.gif';
-        a.click();
-        URL.revokeObjectURL(url);
-        setExporting(false);
-        setProgress(0);
-      });
-
-      gif.render();
+      const imageCache = await buildImageCache();
+      if (format === 'gif') {
+        await exportGif(imageCache);
+      } else {
+        await exportWebM(imageCache);
+      }
+      setShowModal(false);
     } catch (err) {
       console.error('Export failed:', err);
-      alert('Export failed. Check the console for details.');
+      alert(`Export failed: ${err.message ?? err}`);
+    } finally {
       setExporting(false);
       setProgress(0);
+      setProgressLabel('');
     }
-  }, [frames, width, height, textLayers]);
+  }, [frames, format, buildImageCache, exportGif, exportWebM]);
 
   if (!frames.length) return null;
 
   return (
-    <div className="export-button">
-      <button
-        className="btn btn--primary"
-        onClick={handleExport}
-        disabled={exporting}
-        aria-busy={exporting}
-      >
-        {exporting ? `Exporting… ${progress}%` : '⬇️ Export GIF'}
+    <>
+      <button className="btn btn--primary" onClick={openModal}>
+        ⬇️ Export
       </button>
-    </div>
+
+      {showModal && (
+        <div
+          className="export-modal-overlay"
+          onClick={closeModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Export settings"
+        >
+          <div className="export-modal" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="export-modal__header">
+              <h2 className="export-modal__title">Export Settings</h2>
+              <button
+                className="export-modal__close"
+                onClick={closeModal}
+                disabled={exporting}
+                aria-label="Close export settings"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="export-modal__body">
+              {/* File name */}
+              <label className="export-modal__field">
+                <span className="export-modal__field-label">File Name</span>
+                <div className="export-modal__name-row">
+                  <input
+                    className="export-modal__input"
+                    type="text"
+                    value={fileName}
+                    onChange={(e) => setFileName(e.target.value)}
+                    placeholder="filename"
+                    disabled={exporting}
+                    maxLength={100}
+                  />
+                  <span className="export-modal__ext">.{format === 'gif' ? 'gif' : 'webm'}</span>
+                </div>
+              </label>
+
+              {/* Format */}
+              <label className="export-modal__field">
+                <span className="export-modal__field-label">Format</span>
+                <select
+                  className="export-modal__select"
+                  value={format}
+                  onChange={(e) => setFormat(e.target.value)}
+                  disabled={exporting}
+                >
+                  <option value="gif">Animated GIF (.gif)</option>
+                  <option value="webm">WebM Video (.webm)</option>
+                </select>
+              </label>
+
+              {/* GIF-only quality option */}
+              {format === 'gif' && (
+                <div className="export-modal__field">
+                  <div className="export-modal__quality-header">
+                    <span className="export-modal__field-label">Quality</span>
+                    <span className="export-modal__quality-value">
+                      {getGifQualityLabel(gifQuality)} ({gifQuality})
+                    </span>
+                  </div>
+                  <input
+                    className="export-modal__range"
+                    type="range"
+                    min={1}
+                    max={20}
+                    value={gifQuality}
+                    onChange={(e) => setGifQuality(Number(e.target.value))}
+                    disabled={exporting}
+                    aria-label="GIF quality"
+                  />
+                  <div className="export-modal__range-labels">
+                    <span>Best quality</span>
+                    <span>Fastest</span>
+                  </div>
+                </div>
+              )}
+
+              {format === 'webm' && (
+                <p className="export-modal__hint">
+                  WebM captures frames at their original delays using the browser's MediaRecorder API.
+                  Supported in Chrome, Edge, and Firefox.
+                </p>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="export-modal__footer">
+              {exporting && (
+                <div className="export-modal__progress">
+                  <div
+                    className="export-modal__progress-bar"
+                    style={{ width: `${progress}%` }}
+                    role="progressbar"
+                    aria-valuenow={progress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  />
+                  <span className="export-modal__progress-label">{progressLabel}</span>
+                </div>
+              )}
+              <div className="export-modal__footer-btns">
+                <button className="btn btn--ghost" onClick={closeModal} disabled={exporting}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn--primary"
+                  onClick={handleExport}
+                  disabled={exporting || !fileName.trim()}
+                  aria-busy={exporting}
+                >
+                  {exporting
+                    ? `${progressLabel || 'Exporting…'}`
+                    : `⬇️ Export ${format === 'gif' ? 'GIF' : 'WebM'}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
+

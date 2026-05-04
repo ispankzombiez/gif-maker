@@ -310,55 +310,6 @@ a:hover { text-decoration: underline; }
   padding: 2px 14px;
 }
 
-/* Timeline controls bar (add frame + move to position) */
-.timeline__controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 14px 8px;
-  flex-wrap: wrap;
-}
-
-.timeline__add-btn {
-  font-size: 0.75rem;
-  padding: 4px 10px;
-  min-height: unset;
-}
-
-.timeline__move-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.75rem;
-}
-
-.timeline__move-label {
-  color: var(--color-text-dim);
-  white-space: nowrap;
-}
-
-.timeline__move-input {
-  width: 52px;
-  padding: 4px 6px;
-  border-radius: var(--radius);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface2);
-  color: var(--color-text);
-  font-size: 0.8rem;
-  text-align: center;
-}
-
-.timeline__move-input:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
-}
-
-.timeline__move-btn {
-  font-size: 0.75rem;
-  padding: 4px 10px;
-  min-height: unset;
-}
-
 /* ─── Canvas editor ────────────────────────────────────────────────────────── */
 .canvas-editor {
   flex: 1;
@@ -684,28 +635,6 @@ a:hover { text-decoration: underline; }
 /* ─── Export ───────────────────────────────────────────────────────────────── */
 .export-button {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.export-button__format {
-  padding: 8px 10px;
-  border-radius: var(--radius);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface2);
-  color: var(--color-text);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: border-color var(--transition);
-}
-
-.export-button__format:hover:not(:disabled) {
-  border-color: var(--color-primary-hover);
-}
-
-.export-button__format:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* ─── Responsive / mobile ──────────────────────────────────────────────────── */

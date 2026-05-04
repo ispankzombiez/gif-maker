@@ -149,15 +149,48 @@ function drawAnchor(ctx, layer, width, height) {
 }
 
 /**
+ * Draw the base GIF frame onto a canvas context, applying any per-frame
+ * rotation and flip transforms stored on the frame object.
+ *
+ * Called by the local canvas renderer (preview) and by renderFrameWithLayers
+ * (export pipeline).
+ */
+export function drawFrameBase(ctx, frame, width, height) {
+  const rotation = frame?.rotation ?? 0;
+  const flipH = frame?.flipH ?? false;
+  const flipV = frame?.flipV ?? false;
+
+  ctx.clearRect(0, 0, width, height);
+
+  if (rotation === 0 && !flipH && !flipV) {
+    ctx.putImageData(frame.imageData, 0, 0);
+    return;
+  }
+
+  // Draw to an offscreen canvas, then composite with transforms applied.
+  const offscreen = document.createElement('canvas');
+  offscreen.width = width;
+  offscreen.height = height;
+  offscreen.getContext('2d').putImageData(frame.imageData, 0, 0);
+
+  ctx.save();
+  ctx.translate(width / 2, height / 2);
+  ctx.rotate((rotation * Math.PI) / 180);
+  if (flipH) ctx.scale(-1, 1);
+  if (flipV) ctx.scale(1, -1);
+  ctx.drawImage(offscreen, -width / 2, -height / 2);
+  ctx.restore();
+}
+
+/**
  * Render a GIF frame plus all active layers (text and image) onto the given
  * canvas context.
  *
  * Called by CanvasEditor (preview) and ExportButton (export pipeline).
  * Pass an optional `imageCache` Map (src → HTMLImageElement) for image layers.
  */
-export function renderFrameWithLayers(ctx, imageData, textLayers, frameIndex, width, height, imageCache) {
-  ctx.clearRect(0, 0, width, height);
-  ctx.putImageData(imageData, 0, 0);
+export function renderFrameWithLayers(ctx, frame, textLayers, frameIndex, width, height, imageCache) {
+  drawFrameBase(ctx, frame, width, height);
 
   const activeLayers = (textLayers ?? []).filter(
     (l) => (l.type === 'image' ? l.src : l.text) &&
@@ -227,8 +260,7 @@ export default function CanvasEditor({ onLayerSelected, isPlaying }) {
     const ctx = canvas.getContext('2d');
     const cache = imageCache.current;
 
-    ctx.clearRect(0, 0, width, height);
-    ctx.putImageData(frame.imageData, 0, 0);
+    drawFrameBase(ctx, frame, width, height);
 
     const activeLayers = textLayers.filter(
       (l) => (l.type === 'image' ? l.src : l.text) &&

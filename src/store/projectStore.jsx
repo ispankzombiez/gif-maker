@@ -139,6 +139,56 @@ function reducer(state, action) {
     case 'SET_CURRENT_FRAME':
       return { ...state, currentFrameIndex: action.index };
 
+    case 'REORDER_FRAME': {
+      const { fromIndex, toIndex } = action;
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return state;
+      const frames = [...state.frames];
+      const [moved] = frames.splice(fromIndex, 1);
+      frames.splice(toIndex, 0, moved);
+      // Remap per-frame layer positions to follow the moved frame
+      const textLayers = state.textLayers.map((l) => {
+        const newPositions = {};
+        for (const [k, v] of Object.entries(l.positions ?? {})) {
+          const ki = Number(k);
+          let newKi;
+          if (ki === fromIndex) {
+            newKi = toIndex;
+          } else if (fromIndex < toIndex && ki > fromIndex && ki <= toIndex) {
+            newKi = ki - 1;
+          } else if (fromIndex > toIndex && ki >= toIndex && ki < fromIndex) {
+            newKi = ki + 1;
+          } else {
+            newKi = ki;
+          }
+          newPositions[newKi] = v;
+        }
+        return { ...l, positions: newPositions };
+      });
+      return { ...state, frames, textLayers, currentFrameIndex: toIndex };
+    }
+
+    case 'INSERT_FRAME': {
+      const { frameData, atIndex } = action;
+      const frames = [...state.frames];
+      const clampedAt = Math.max(0, Math.min(frames.length, atIndex));
+      frames.splice(clampedAt, 0, frameData);
+      // Shift per-frame positions and layer ranges to account for the new frame
+      const textLayers = state.textLayers.map((l) => {
+        const newPositions = {};
+        for (const [k, v] of Object.entries(l.positions ?? {})) {
+          const ki = Number(k);
+          newPositions[ki >= clampedAt ? ki + 1 : ki] = v;
+        }
+        return {
+          ...l,
+          startFrame: l.startFrame >= clampedAt ? l.startFrame + 1 : l.startFrame,
+          endFrame: l.endFrame >= clampedAt ? l.endFrame + 1 : l.endFrame,
+          positions: newPositions,
+        };
+      });
+      return { ...state, frames, textLayers, currentFrameIndex: clampedAt };
+    }
+
     case 'ADD_LAYER': {
       const id = state.nextLayerId;
       const newLayer = {
@@ -346,6 +396,14 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'SELECT_LAYER', id });
   }, []);
 
+  const reorderFrame = useCallback((fromIndex, toIndex) => {
+    dispatch({ type: 'REORDER_FRAME', fromIndex, toIndex });
+  }, []);
+
+  const insertFrame = useCallback((frameData, atIndex) => {
+    dispatch({ type: 'INSERT_FRAME', frameData, atIndex });
+  }, []);
+
   const updateDefaultSettings = useCallback((changes) => {
     dispatch({ type: 'UPDATE_DEFAULT_SETTINGS', changes });
   }, []);
@@ -372,6 +430,8 @@ export function ProjectProvider({ children }) {
         moveAnchor,
         selectLayer,
         updateDefaultSettings,
+        reorderFrame,
+        insertFrame,
         loadProject,
         reset,
         DEFAULT_TEXT_LAYER_PROPS,

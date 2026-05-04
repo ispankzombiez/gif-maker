@@ -307,6 +307,7 @@ a:hover { text-decoration: underline; }
 .timeline__info {
   font-size: 0.75rem;
   color: var(--color-text-dim);
+  padding: 2px 14px;
 }
 
 /* Timeline controls bar (add frame + move to position) */

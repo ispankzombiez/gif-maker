@@ -68,7 +68,7 @@ export default function ExportButton() {
           actualMime = 'video/webm';
         } else {
           throw new Error(
-            'No supported video format found in this browser. Try exporting as GIF or WebM.'
+            'No supported video format found in this browser. Try exporting as GIF instead.'
           );
         }
       }
@@ -122,8 +122,9 @@ export default function ExportButton() {
     setExporting(true);
     setProgress(0);
 
-    // Track whether gif.js took ownership of the export lifecycle
-    let gifRendering = false;
+    // Track whether gif.js took ownership of the export lifecycle via its
+    // 'finished' callback (which will call setExporting/setProgress itself).
+    let gifHandlesCleanup = false;
 
     try {
       const imageCache = await buildImageCache();
@@ -163,7 +164,7 @@ export default function ExportButton() {
           setProgress(0);
         });
 
-        gifRendering = true;
+        gifHandlesCleanup = true;
         gif.render();
         // setExporting(false) is handled inside the 'finished' callback above
         return;
@@ -175,7 +176,7 @@ export default function ExportButton() {
       alert(`Export failed: ${err.message || 'Check the console for details.'}`);
     } finally {
       // Reset state for video exports, and for GIF if render never started.
-      if (!gifRendering) {
+      if (!gifHandlesCleanup) {
         setExporting(false);
         setProgress(0);
       }

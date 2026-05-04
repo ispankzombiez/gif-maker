@@ -85,9 +85,7 @@ export default function Timeline() {
         const sh = img.height * scale;
         ctx.drawImage(img, (width - sw) / 2, (height - sh) / 2, sw, sh);
         const imageData = ctx.getImageData(0, 0, width, height);
-        const avgDelay = frames.length
-          ? Math.round(frames.reduce((s, f) => s + f.delay, 0) / frames.length)
-          : 100;
+        const avgDelay = Math.round(frames.reduce((s, f) => s + f.delay, 0) / frames.length);
         insertFrame({ imageData, delay: avgDelay }, currentFrameIndex + 1);
       };
       img.src = ev.target.result;

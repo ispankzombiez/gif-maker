@@ -396,6 +396,37 @@ function reducer(state, action) {
       };
     }
 
+    case 'ADD_FRAME': {
+      // Insert a new frame (with given imageData and delay) at the specified position.
+      const { insertAt, imageData, delay } = action;
+      const clampedAt = Math.max(0, Math.min(state.frames.length, insertAt));
+      const newFrame = { imageData, delay: delay ?? 100 };
+      const newFrames = [
+        ...state.frames.slice(0, clampedAt),
+        newFrame,
+        ...state.frames.slice(clampedAt),
+      ];
+
+      // Shift text layer positions / ranges for frames at or after clampedAt
+      const newTextLayers = state.textLayers.map((layer) => {
+        const newPositions = {};
+        for (const [k, v] of Object.entries(layer.positions ?? {})) {
+          const ki = Number(k);
+          newPositions[ki >= clampedAt ? ki + 1 : ki] = v;
+        }
+        const sf = layer.startFrame >= clampedAt ? layer.startFrame + 1 : layer.startFrame;
+        const ef = layer.endFrame >= clampedAt ? layer.endFrame + 1 : layer.endFrame;
+        return { ...layer, startFrame: sf, endFrame: ef, positions: newPositions };
+      });
+
+      return {
+        ...state,
+        frames: newFrames,
+        currentFrameIndex: clampedAt,
+        textLayers: newTextLayers,
+      };
+    }
+
     case 'RESET':
       return { ...initialState };
 
@@ -467,6 +498,10 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'UPDATE_FRAME_DELAY', index, delay });
   }, []);
 
+  const addFrame = useCallback((insertAt, imageData, delay) => {
+    dispatch({ type: 'ADD_FRAME', insertAt, imageData, delay });
+  }, []);
+
   const loadProject = useCallback((projectState) => {
     dispatch({ type: 'LOAD_PROJECT', ...projectState });
   }, []);
@@ -493,6 +528,7 @@ export function ProjectProvider({ children }) {
         duplicateFrame,
         reorderFrames,
         updateFrameDelay,
+        addFrame,
         loadProject,
         reset,
         DEFAULT_TEXT_LAYER_PROPS,

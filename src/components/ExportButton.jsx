@@ -3,7 +3,7 @@
  *
  * Opens an export-settings modal where the user can choose:
  *   – File name
- *   – Format: GIF (via gif.js) or WebM video (via MediaRecorder)
+ *   – Format: GIF (via gif.js), WebM, MP4, or MOV video (via MediaRecorder)
  *   – GIF quality (1 = best / slowest … 20 = fastest / largest)
  *
  * gif.js relies on a Web Worker; the worker script must be served from the
@@ -20,6 +20,11 @@ function getGifQualityLabel(q) {
   if (q <= 12) return 'Balanced';
   return 'Fast';
 }
+
+const FORMAT_EXT = { gif: 'gif', webm: 'webm', mp4: 'mp4', mov: 'mov' };
+
+const WEBM_MIME_TYPES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+const MP4_MIME_TYPES = ['video/mp4;codecs=avc1', 'video/mp4'];
 
 export default function ExportButton() {
   const { state } = useProject();
@@ -104,20 +109,22 @@ export default function ExportButton() {
     });
   }, [frames, width, height, textLayers, fileName, gifQuality]);
 
-  /** Export as WebM video using canvas.captureStream + MediaRecorder. */
-  const exportWebM = useCallback(async (imageCache) => {
+  /**
+   * Shared video export using canvas.captureStream + MediaRecorder.
+   * @param {string} mimeType  - MIME type for MediaRecorder (e.g. 'video/mp4')
+   * @param {string} ext       - File extension for the download (e.g. 'mp4', 'mov')
+   * @param {Map}    imageCache
+   */
+  const exportVideo = useCallback(async (mimeType, ext, imageCache) => {
     const offscreen = document.createElement('canvas');
     offscreen.width = width;
     offscreen.height = height;
     const ctx = offscreen.getContext('2d');
 
-    // Pick a supported mimeType
-    const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(
-      (m) => MediaRecorder.isTypeSupported(m)
-    );
-    if (!mimeType) {
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
       throw new Error(
-        'WebM recording is not supported in this browser. Your browser does not support any of the required WebM codecs (VP8/VP9). Please use GIF format instead.'
+        `${ext.toUpperCase()} recording is not supported in this browser. ` +
+        `Please try a different format (WebM is the most widely supported).`
       );
     }
 
@@ -129,11 +136,11 @@ export default function ExportButton() {
     await new Promise((resolve, reject) => {
       recorder.onerror = (e) => reject(e.error ?? new Error('MediaRecorder error'));
       recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
+        const blob = new Blob(chunks, { type: mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${fileName || 'edited'}.webm`;
+        a.download = `${fileName || 'edited'}.${ext}`;
         a.click();
         URL.revokeObjectURL(url);
         resolve();
@@ -161,6 +168,41 @@ export default function ExportButton() {
     });
   }, [frames, width, height, textLayers, fileName]);
 
+  /** Export as WebM video using canvas.captureStream + MediaRecorder. */
+  const exportWebM = useCallback(async (imageCache) => {
+    const mimeType = WEBM_MIME_TYPES.find((m) => MediaRecorder.isTypeSupported(m));
+    if (!mimeType) {
+      throw new Error(
+        'WebM recording is not supported in this browser. Your browser does not support any of the required WebM codecs (VP8/VP9). Please use GIF format instead.'
+      );
+    }
+    await exportVideo(mimeType, 'webm', imageCache);
+  }, [exportVideo]);
+
+  /** Export as MP4 video. Requires Chrome 130+ / Edge. */
+  const exportMp4 = useCallback(async (imageCache) => {
+    const mimeType = MP4_MIME_TYPES.find((m) => MediaRecorder.isTypeSupported(m));
+    if (!mimeType) {
+      throw new Error(
+        'MP4 recording is not supported in this browser. ' +
+        'Try Chrome 130+ or Edge, or use WebM format instead.'
+      );
+    }
+    await exportVideo(mimeType, 'mp4', imageCache);
+  }, [exportVideo]);
+
+  /** Export as MOV video. Uses the same H.264/MP4 stream with a .mov extension. */
+  const exportMov = useCallback(async (imageCache) => {
+    const mimeType = MP4_MIME_TYPES.find((m) => MediaRecorder.isTypeSupported(m));
+    if (!mimeType) {
+      throw new Error(
+        'MOV export is not supported in this browser. ' +
+        'Try Chrome 130+ or Edge, or use WebM format instead.'
+      );
+    }
+    await exportVideo(mimeType, 'mov', imageCache);
+  }, [exportVideo]);
+
   const handleExport = useCallback(async () => {
     if (!frames.length) return;
     setExporting(true);
@@ -171,8 +213,12 @@ export default function ExportButton() {
       const imageCache = await buildImageCache();
       if (format === 'gif') {
         await exportGif(imageCache);
-      } else {
+      } else if (format === 'webm') {
         await exportWebM(imageCache);
+      } else if (format === 'mp4') {
+        await exportMp4(imageCache);
+      } else if (format === 'mov') {
+        await exportMov(imageCache);
       }
       setShowModal(false);
     } catch (err) {
@@ -183,9 +229,12 @@ export default function ExportButton() {
       setProgress(0);
       setProgressLabel('');
     }
-  }, [frames, format, buildImageCache, exportGif, exportWebM]);
+  }, [frames, format, buildImageCache, exportGif, exportWebM, exportMp4, exportMov]);
 
   if (!frames.length) return null;
+
+  const ext = FORMAT_EXT[format] ?? format;
+  const isVideoFormat = format !== 'gif';
 
   return (
     <>
@@ -230,7 +279,7 @@ export default function ExportButton() {
                     disabled={exporting}
                     maxLength={100}
                   />
-                  <span className="export-modal__ext">.{format === 'gif' ? 'gif' : 'webm'}</span>
+                  <span className="export-modal__ext">.{ext}</span>
                 </div>
               </label>
 
@@ -245,6 +294,8 @@ export default function ExportButton() {
                 >
                   <option value="gif">Animated GIF (.gif)</option>
                   <option value="webm">WebM Video (.webm)</option>
+                  <option value="mp4">MP4 Video (.mp4)</option>
+                  <option value="mov">QuickTime Video (.mov)</option>
                 </select>
               </label>
 
@@ -280,6 +331,20 @@ export default function ExportButton() {
                   Supported in Chrome, Edge, and Firefox.
                 </p>
               )}
+
+              {format === 'mp4' && (
+                <p className="export-modal__hint">
+                  MP4 export uses the browser's MediaRecorder API with H.264 encoding.
+                  Requires Chrome 130+ or Edge. Files are compatible with most players.
+                </p>
+              )}
+
+              {format === 'mov' && (
+                <p className="export-modal__hint">
+                  MOV export uses H.264 video in a QuickTime-compatible container.
+                  Requires Chrome 130+ or Edge. Ideal for macOS / iOS playback.
+                </p>
+              )}
             </div>
 
             {/* Footer */}
@@ -309,7 +374,7 @@ export default function ExportButton() {
                 >
                   {exporting
                     ? `${progressLabel || 'Exporting…'}`
-                    : `⬇️ Export ${format === 'gif' ? 'GIF' : 'WebM'}`}
+                    : `⬇️ Export ${ext.toUpperCase()}`}
                 </button>
               </div>
             </div>

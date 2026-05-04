@@ -87,8 +87,9 @@ export default function ExportButton() {
     const ctx = offscreen.getContext('2d');
 
     const frameList = reverseExport ? [...frames].reverse() : frames;
-    frameList.forEach((frame, i) => {
+    frameList.forEach((_, i) => {
       const origIndex = reverseExport ? frames.length - 1 - i : i;
+      const frame = frames[origIndex];
       renderFrameWithLayers(ctx, frame, textLayers, origIndex, width, height, imageCache);
       const adjustedDelay = Math.max(10, Math.round((frame.delay ?? 100) / exportSpeed));
       gif.addFrame(offscreen, { copy: true, delay: adjustedDelay });
@@ -138,7 +139,7 @@ export default function ExportButton() {
     const chunks = [];
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
-    const frameList = reverseExport ? [...frames].reverse() : frames;
+    const totalFrames = frames.length;
 
     await new Promise((resolve, reject) => {
       recorder.onerror = (e) => reject(e.error ?? new Error('MediaRecorder error'));
@@ -159,17 +160,17 @@ export default function ExportButton() {
       const track = stream.getVideoTracks()[0];
 
       const renderNext = () => {
-        if (i >= frameList.length) {
+        if (i >= totalFrames) {
           recorder.stop();
           return;
         }
-        const frame = frameList[i];
-        const origIndex = reverseExport ? frameList.length - 1 - i : i;
+        const origIndex = reverseExport ? totalFrames - 1 - i : i;
+        const frame = frames[origIndex];
         renderFrameWithLayers(ctx, frame, textLayers, origIndex, width, height, imageCache);
         if (track.requestFrame) track.requestFrame();
         const adjustedDelay = Math.max(10, Math.round((frame.delay ?? 100) / exportSpeed));
-        setProgress(Math.round(((i + 1) / frameList.length) * 100));
-        setProgressLabel(`Rendering… ${i + 1} / ${frameList.length}`);
+        setProgress(Math.round(((i + 1) / totalFrames) * 100));
+        setProgressLabel(`Rendering… ${i + 1} / ${totalFrames}`);
         setTimeout(() => { i++; renderNext(); }, adjustedDelay);
       };
 

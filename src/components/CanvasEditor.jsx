@@ -176,8 +176,7 @@ export function drawFrameBase(ctx, frame, width, height) {
   ctx.save();
   ctx.translate(width / 2, height / 2);
   ctx.rotate((rotation * Math.PI) / 180);
-  if (flipH) ctx.scale(-1, 1);
-  if (flipV) ctx.scale(1, -1);
+  ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
   ctx.drawImage(offscreen, -width / 2, -height / 2);
   ctx.restore();
 }

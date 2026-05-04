@@ -1,32 +1,42 @@
 /**
  * Uploader.jsx
  *
- * Drag-and-drop / click-to-browse file input that accepts GIF files.
- * Calls extractFrames() from the useGifFrames hook on selection.
+ * Drag-and-drop / click-to-browse file input that accepts GIF files and
+ * common image formats (PNG, JPEG, WebP, etc.).
+ * GIF files are parsed into frames via useGifFrames; image files are treated
+ * as the first (and only) frame of a new GIF project.
  */
 
 import React, { useCallback, useRef, useState } from 'react';
 import { useGifFrames } from '../hooks/useGifFrames';
 
+const ACCEPTED_TYPES = 'image/gif,image/png,image/jpeg,image/webp,image/bmp,image/avif,.gif,.png,.jpg,.jpeg,.webp,.bmp,.avif';
+
+function isGif(file) {
+  return file.type === 'image/gif' || file.name?.toLowerCase().endsWith('.gif');
+}
+
+function isImage(file) {
+  return file.type?.startsWith('image/') || /\.(png|jpe?g|webp|bmp|avif)$/i.test(file.name ?? '');
+}
+
 export default function Uploader() {
-  const { extractFrames, loading, error } = useGifFrames();
+  const { extractFrames, extractImageAsFrame, loading, error } = useGifFrames();
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
 
   const handleFile = useCallback(
     (file) => {
       if (!file) return;
-      // Accept any file; validate by attempting to parse as GIF below.
-      // Avoid strict MIME-type gating here because some mobile browsers
-      // (e.g. Samsung Internet) report a blank or non-standard MIME type
-      // for GIF files picked from the gallery.
-      if (file.type && !file.type.includes('gif') && !file.name?.toLowerCase().endsWith('.gif')) {
-        alert('Please upload a GIF file.');
-        return;
+      if (isGif(file)) {
+        extractFrames(file);
+      } else if (isImage(file)) {
+        extractImageAsFrame(file);
+      } else {
+        alert('Please upload a GIF or image file (PNG, JPEG, WebP, etc.).');
       }
-      extractFrames(file);
     },
-    [extractFrames]
+    [extractFrames, extractImageAsFrame]
   );
 
   const onInputChange = (e) => handleFile(e.target.files[0]);
@@ -57,25 +67,27 @@ export default function Uploader() {
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
-      aria-label="Upload a GIF file"
+      aria-label="Upload a GIF or image file"
     >
       <input
         ref={inputRef}
         type="file"
-        accept="image/gif,.gif"
+        accept={ACCEPTED_TYPES}
         onChange={onInputChange}
         style={{ display: 'none' }}
       />
 
       {loading ? (
-        <p className="uploader__status">⏳ Parsing GIF frames…</p>
+        <p className="uploader__status">⏳ Loading…</p>
       ) : (
         <>
           <span className="uploader__icon">🎞️</span>
           <p className="uploader__label">
-            <strong>Click</strong> or <strong>drag & drop</strong> a GIF here
+            <strong>Click</strong> or <strong>drag & drop</strong> a GIF or image here
           </p>
-          <p className="uploader__hint">Supports animated GIFs up to ~10 MB</p>
+          <p className="uploader__hint">
+            Supports animated GIFs up to ~10 MB, or any image (PNG, JPEG, WebP…)
+          </p>
         </>
       )}
 

@@ -24,6 +24,28 @@ export default function ExportButton() {
     setProgress(0);
 
     try {
+      // Pre-load all image layers before starting export
+      const imageCache = new Map();
+      const imageLayers = textLayers.filter((l) => l.type === 'image' && l.src);
+      await Promise.all(
+        imageLayers.map(
+          (layer) =>
+            new Promise((resolve) => {
+              if (imageCache.has(layer.src)) {
+                resolve();
+                return;
+              }
+              const img = new Image();
+              img.onload = () => {
+                imageCache.set(layer.src, img);
+                resolve();
+              };
+              img.onerror = resolve; // don't fail export on a bad image
+              img.src = layer.src;
+            })
+        )
+      );
+
       const GIF = (await import('gif.js')).default;
 
       const gif = new GIF({
@@ -40,7 +62,7 @@ export default function ExportButton() {
       const ctx = offscreen.getContext('2d');
 
       frames.forEach((frame, i) => {
-        renderFrameWithLayers(ctx, frame.imageData, textLayers, i, width, height);
+        renderFrameWithLayers(ctx, frame.imageData, textLayers, i, width, height, imageCache);
         gif.addFrame(offscreen, { copy: true, delay: frame.delay });
       });
 

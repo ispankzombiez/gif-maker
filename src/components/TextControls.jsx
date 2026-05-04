@@ -18,7 +18,7 @@
  *   – start frame / end frame (1-indexed for display)   (more options / collapsible)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useProject, getLayerPositionForFrame } from '../store/projectStore';
 
 const FONT_FAMILIES = ['Arial', 'Georgia', 'Impact', 'Courier New', 'Verdana'];
@@ -59,10 +59,11 @@ function NumberInput({ value, min, max, onChange, className }) {
 }
 
 export default function TextControls() {
-  const { state, addLayer, deleteLayer, updateLayer, updateLayerFramePos, selectLayer, updateDefaultSettings } = useProject();
+  const { state, addLayer, addImageLayer, deleteLayer, updateLayer, updateLayerFramePos, selectLayer, updateDefaultSettings } = useProject();
   const { frames, textLayers, selectedLayerId, currentFrameIndex, defaultLayerSettings } = state;
   const [showMore, setShowMore] = useState(false);
   const [showDefaults, setShowDefaults] = useState(false);
+  const imageInputRef = useRef(null);
 
   if (!frames.length) return null;
 
@@ -92,6 +93,24 @@ export default function TextControls() {
       axis === 'x' ? value : currentPos.x,
       axis === 'y' ? value : currentPos.y
     );
+  };
+
+  const handleImageFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const src = ev.target.result;
+      const img = new Image();
+      img.onload = () => {
+        const aspectRatio = img.height / img.width;
+        addImageLayer(src, 30, aspectRatio);
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+    // Reset so the same file can be re-selected
+    e.target.value = '';
   };
 
   return (
@@ -221,18 +240,34 @@ export default function TextControls() {
 
       {/* ── Layer list ──────────────────────────────────────────────────── */}
       <div className="text-controls__layer-header">
-        <h3 className="text-controls__title">Text Layers</h3>
-        <button
-          className="btn btn--secondary text-controls__add-btn"
-          onClick={addLayer}
-          title="Add a new text layer"
-        >
-          + Add Text
-        </button>
+        <h3 className="text-controls__title">Layers</h3>
+        <div className="text-controls__add-btns">
+          <button
+            className="btn btn--secondary text-controls__add-btn"
+            onClick={addLayer}
+            title="Add a new text layer"
+          >
+            + Add Text
+          </button>
+          <button
+            className="btn btn--secondary text-controls__add-btn"
+            onClick={() => imageInputRef.current?.click()}
+            title="Add an image overlay"
+          >
+            🖼 Add Image
+          </button>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageFile}
+            style={{ display: 'none' }}
+          />
+        </div>
       </div>
 
       {textLayers.length === 0 && (
-        <p className="text-controls__empty">No text layers yet. Click "+ Add Text" to start.</p>
+        <p className="text-controls__empty">No layers yet. Click "+ Add Text" or "🖼 Add Image" to start.</p>
       )}
 
       <ul className="text-controls__layer-list">
@@ -243,7 +278,9 @@ export default function TextControls() {
             onClick={() => selectLayer(layer.id)}
           >
             <span className="text-controls__layer-label">
-              {layer.text ? `"${layer.text.slice(0, 20)}${layer.text.length > 20 ? '…' : ''}"` : '(empty)'}
+              {layer.type === 'image'
+                ? `🖼 ${layer.src ? 'Image' : '(no image)'}`
+                : (layer.text ? `"${layer.text.slice(0, 20)}${layer.text.length > 20 ? '…' : ''}"` : '(empty)')}
             </span>
             <span className="text-controls__layer-range">
               {layer.startFrame + 1}–{layer.endFrame + 1}
@@ -266,59 +303,82 @@ export default function TextControls() {
       {/* ── Selected layer editor ────────────────────────────────────────── */}
       {selectedLayer && (
         <div className="text-controls__editor">
-          <h4 className="text-controls__editor-title">Edit Layer</h4>
+          <h4 className="text-controls__editor-title">
+            Edit {selectedLayer.type === 'image' ? 'Image' : 'Text'} Layer
+          </h4>
 
-          {/* Text content */}
-          <label className="text-controls__label">
-            Text
-            <input
-              className="text-controls__input"
-              type="text"
-              value={selectedLayer.text}
-              onChange={(e) => update('text', e.target.value)}
-              placeholder="Enter text…"
-              maxLength={200}
-            />
-          </label>
+          {/* ── Text-specific controls ─────────────────────────────────── */}
+          {selectedLayer.type !== 'image' && (
+            <>
+              {/* Text content */}
+              <label className="text-controls__label">
+                Text
+                <input
+                  className="text-controls__input"
+                  type="text"
+                  value={selectedLayer.text}
+                  onChange={(e) => update('text', e.target.value)}
+                  placeholder="Enter text…"
+                  maxLength={200}
+                />
+              </label>
 
-          {/* Font size */}
-          <label className="text-controls__label">
-            Size (px)
-            <NumberInput
-              className="text-controls__input text-controls__input--num"
-              value={selectedLayer.fontSize}
-              min={10}
-              max={120}
-              onChange={(v) => update('fontSize', v)}
-            />
-          </label>
+              {/* Font size */}
+              <label className="text-controls__label">
+                Size (px)
+                <NumberInput
+                  className="text-controls__input text-controls__input--num"
+                  value={selectedLayer.fontSize}
+                  min={10}
+                  max={120}
+                  onChange={(v) => update('fontSize', v)}
+                />
+              </label>
 
-          {/* Text colour */}
-          <div className="text-controls__label">
-            <span>Text Color</span>
-            <input
-              className="text-controls__color"
-              type="color"
-              value={selectedLayer.color}
-              onChange={(e) => update('color', e.target.value)}
-            />
-          </div>
+              {/* Text colour */}
+              <div className="text-controls__label">
+                <span>Text Color</span>
+                <input
+                  className="text-controls__color"
+                  type="color"
+                  value={selectedLayer.color}
+                  onChange={(e) => update('color', e.target.value)}
+                />
+              </div>
 
-          {/* Font family */}
-          <label className="text-controls__label">
-            Font
-            <select
-              className="text-controls__select"
-              value={selectedLayer.fontFamily}
-              onChange={(e) => update('fontFamily', e.target.value)}
-            >
-              {FONT_FAMILIES.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </label>
+              {/* Font family */}
+              <label className="text-controls__label">
+                Font
+                <select
+                  className="text-controls__select"
+                  value={selectedLayer.fontFamily}
+                  onChange={(e) => update('fontFamily', e.target.value)}
+                >
+                  {FONT_FAMILIES.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+
+          {/* ── Image-specific controls ────────────────────────────────── */}
+          {selectedLayer.type === 'image' && (
+            <label className="text-controls__label">
+              Width (% of canvas)
+              <NumberInput
+                className="text-controls__input text-controls__input--num"
+                value={Math.round(selectedLayer.widthPct ?? 30)}
+                min={5}
+                max={150}
+                onChange={(v) => update('widthPct', v)}
+              />
+            </label>
+          )}
+
+          {/* ── Shared controls (both text and image) ─────────────────── */}
 
           {/* X / Y position — number inputs (auto-updated by drag) */}
           <div className="text-controls__pos-row">
@@ -398,28 +458,30 @@ export default function TextControls() {
           {/* ── Collapsible secondary controls ──────────────────────────── */}
           {showMore && (
             <>
-              {/* Background colour + opacity */}
-              <div className="text-controls__bg-row">
-                <div className="text-controls__label text-controls__label--inline">
-                  <span>Background</span>
-                  <input
-                    className="text-controls__color"
-                    type="color"
-                    value={selectedLayer.bgColor}
-                    onChange={(e) => update('bgColor', e.target.value)}
-                  />
+              {/* Background colour + opacity (text layers only) */}
+              {selectedLayer.type !== 'image' && (
+                <div className="text-controls__bg-row">
+                  <div className="text-controls__label text-controls__label--inline">
+                    <span>Background</span>
+                    <input
+                      className="text-controls__color"
+                      type="color"
+                      value={selectedLayer.bgColor}
+                      onChange={(e) => update('bgColor', e.target.value)}
+                    />
+                  </div>
+                  <label className="text-controls__label text-controls__label--grow">
+                    Opacity (%)
+                    <NumberInput
+                      className="text-controls__input text-controls__input--num"
+                      value={Math.round(selectedLayer.bgAlpha * 100)}
+                      min={0}
+                      max={100}
+                      onChange={(v) => update('bgAlpha', v / 100)}
+                    />
+                  </label>
                 </div>
-                <label className="text-controls__label text-controls__label--grow">
-                  Opacity (%)
-                  <NumberInput
-                    className="text-controls__input text-controls__input--num"
-                    value={Math.round(selectedLayer.bgAlpha * 100)}
-                    min={0}
-                    max={100}
-                    onChange={(v) => update('bgAlpha', v / 100)}
-                  />
-                </label>
-              </div>
+              )}
 
               {/* Frame range */}
               <div className="text-controls__frame-range">

@@ -14,6 +14,13 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useProject } from '../store/projectStore';
 import { renderFrameWithLayers } from './CanvasEditor';
 
+function getGifQualityLabel(q) {
+  if (q === 1) return 'Best';
+  if (q <= 5) return 'High';
+  if (q <= 12) return 'Balanced';
+  return 'Fast';
+}
+
 export default function ExportButton() {
   const { state } = useProject();
   const { frames, width, height, textLayers, gifFileName } = state;
@@ -109,7 +116,9 @@ export default function ExportButton() {
       (m) => MediaRecorder.isTypeSupported(m)
     );
     if (!mimeType) {
-      throw new Error('WebM recording is not supported in this browser. Please use GIF format.');
+      throw new Error(
+        'WebM recording is not supported in this browser. Your browser does not support any of the required WebM codecs (VP8/VP9). Please use GIF format instead.'
+      );
     }
 
     const stream = offscreen.captureStream(0);
@@ -245,8 +254,7 @@ export default function ExportButton() {
                   <div className="export-modal__quality-header">
                     <span className="export-modal__field-label">Quality</span>
                     <span className="export-modal__quality-value">
-                      {gifQuality === 1 ? 'Best' : gifQuality <= 5 ? 'High' : gifQuality <= 12 ? 'Balanced' : 'Fast'}
-                      {' '}({gifQuality})
+                      {getGifQualityLabel(gifQuality)} ({gifQuality})
                     </span>
                   </div>
                   <input

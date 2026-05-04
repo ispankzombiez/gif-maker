@@ -396,6 +396,14 @@ function reducer(state, action) {
       };
     }
 
+    case 'UPDATE_FRAME_TRANSFORM': {
+      const { index, changes } = action;
+      return {
+        ...state,
+        frames: state.frames.map((f, i) => (i === index ? { ...f, ...changes } : f)),
+      };
+    }
+
     case 'ADD_FRAME': {
       // Insert a new frame (with given imageData and delay) at the specified position.
       const { insertAt, imageData, delay } = action;
@@ -498,6 +506,10 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'UPDATE_FRAME_DELAY', index, delay });
   }, []);
 
+  const updateFrameTransform = useCallback((index, changes) => {
+    dispatch({ type: 'UPDATE_FRAME_TRANSFORM', index, changes });
+  }, []);
+
   const addFrame = useCallback((insertAt, imageData, delay) => {
     dispatch({ type: 'ADD_FRAME', insertAt, imageData, delay });
   }, []);
@@ -528,6 +540,7 @@ export function ProjectProvider({ children }) {
         duplicateFrame,
         reorderFrames,
         updateFrameDelay,
+        updateFrameTransform,
         addFrame,
         loadProject,
         reset,

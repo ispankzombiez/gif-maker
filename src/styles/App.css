@@ -1070,6 +1070,222 @@ a:hover { text-decoration: underline; }
   border-color: var(--color-danger);
 }
 
+/* ─── Preview speed control (header nav) ──────────────────────────────────── */
+.preview-speed-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.preview-speed-row__label {
+  font-size: 0.78rem;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+}
+
+.preview-speed-row__input {
+  width: 56px;
+  padding: 5px 7px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface2);
+  color: var(--color-text);
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.preview-speed-row__input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.preview-speed-row__unit {
+  font-size: 0.78rem;
+  color: var(--color-text-dim);
+}
+
+/* ─── Export modal extras (reverse + speed) ───────────────────────────────── */
+.export-modal__checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.export-modal__checkbox-row input[type='checkbox'] {
+  accent-color: var(--color-primary);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.export-modal__speed-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.export-modal__speed-input {
+  width: 72px;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface2);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.export-modal__speed-input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.export-modal__speed-unit {
+  font-size: 0.88rem;
+  color: var(--color-text-dim);
+}
+
+.export-modal__speed-hint {
+  font-size: 0.78rem;
+  color: var(--color-text-dim);
+  font-style: italic;
+}
+
+/* ─── Rotate / Flip editor ────────────────────────────────────────────────── */
+.rotate-flip-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rotate-flip-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rotate-flip-editor__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rotate-flip-editor__count {
+  font-size: 0.75rem;
+  color: var(--color-text-dim);
+}
+
+.rotate-flip-editor__hint {
+  font-size: 0.78rem;
+  color: var(--color-text-dim);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.rotate-flip-editor__col-headers {
+  display: grid;
+  grid-template-columns: 52px 1fr 28px 28px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.rotate-flip-editor__col-thumb {
+  /* spacer for thumb column */
+}
+
+.rotate-flip-editor__col-label {
+  font-size: 0.68rem;
+  color: var(--color-text-dim);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.rotate-flip-editor__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rotate-flip-editor__item {
+  display: grid;
+  grid-template-columns: 52px 1fr 28px 28px;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface2);
+  font-size: 0.82rem;
+  transition: border-color var(--transition);
+}
+
+.rotate-flip-editor__item--active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface2));
+}
+
+.rotate-flip-editor__thumb-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  transition: opacity var(--transition);
+}
+
+.rotate-flip-editor__thumb-btn:hover {
+  opacity: 0.8;
+}
+
+.rotate-flip-editor__frame-num {
+  font-size: 0.62rem;
+  color: var(--color-text-dim);
+  line-height: 1;
+}
+
+.rotate-flip-editor__rotation-input {
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.rotate-flip-editor__rotation-input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.rotate-flip-editor__checkbox-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.rotate-flip-editor__checkbox {
+  accent-color: var(--color-primary);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
 /* ─── Responsive / mobile ──────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   /* Hide desktop sidebar — use side panel instead */

@@ -40,6 +40,8 @@ export default function ExportButton() {
   const [fileName, setFileName] = useState(defaultName);
   const [format, setFormat] = useState('gif');
   const [gifQuality, setGifQuality] = useState(10);
+  const [reverseExport, setReverseExport] = useState(false);
+  const [exportSpeed, setExportSpeed] = useState(1.0);
 
   // Sync default filename when a new GIF is loaded
   useEffect(() => {
@@ -84,9 +86,13 @@ export default function ExportButton() {
     offscreen.height = height;
     const ctx = offscreen.getContext('2d');
 
-    frames.forEach((frame, i) => {
-      renderFrameWithLayers(ctx, frame.imageData, textLayers, i, width, height, imageCache);
-      gif.addFrame(offscreen, { copy: true, delay: frame.delay });
+    const frameList = reverseExport ? [...frames].reverse() : frames;
+    frameList.forEach((_, i) => {
+      const origIndex = reverseExport ? frames.length - 1 - i : i;
+      const frame = frames[origIndex];
+      renderFrameWithLayers(ctx, frame, textLayers, origIndex, width, height, imageCache);
+      const adjustedDelay = Math.max(10, Math.round((frame.delay ?? 100) / exportSpeed));
+      gif.addFrame(offscreen, { copy: true, delay: adjustedDelay });
     });
 
     gif.on('progress', (p) => {
@@ -107,7 +113,7 @@ export default function ExportButton() {
       gif.on('error', reject);
       gif.render();
     });
-  }, [frames, width, height, textLayers, fileName, gifQuality]);
+  }, [frames, width, height, textLayers, fileName, gifQuality, reverseExport, exportSpeed]);
 
   /**
    * Shared video export using canvas.captureStream + MediaRecorder.
@@ -133,6 +139,8 @@ export default function ExportButton() {
     const chunks = [];
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
+    const totalFrames = frames.length;
+
     await new Promise((resolve, reject) => {
       recorder.onerror = (e) => reject(e.error ?? new Error('MediaRecorder error'));
       recorder.onstop = () => {
@@ -152,21 +160,23 @@ export default function ExportButton() {
       const track = stream.getVideoTracks()[0];
 
       const renderNext = () => {
-        if (i >= frames.length) {
+        if (i >= totalFrames) {
           recorder.stop();
           return;
         }
-        const frame = frames[i];
-        renderFrameWithLayers(ctx, frame.imageData, textLayers, i, width, height, imageCache);
+        const origIndex = reverseExport ? totalFrames - 1 - i : i;
+        const frame = frames[origIndex];
+        renderFrameWithLayers(ctx, frame, textLayers, origIndex, width, height, imageCache);
         if (track.requestFrame) track.requestFrame();
-        setProgress(Math.round(((i + 1) / frames.length) * 100));
-        setProgressLabel(`Rendering… ${i + 1} / ${frames.length}`);
-        setTimeout(() => { i++; renderNext(); }, frame.delay ?? 100);
+        const adjustedDelay = Math.max(10, Math.round((frame.delay ?? 100) / exportSpeed));
+        setProgress(Math.round(((i + 1) / totalFrames) * 100));
+        setProgressLabel(`Rendering… ${i + 1} / ${totalFrames}`);
+        setTimeout(() => { i++; renderNext(); }, adjustedDelay);
       };
 
       renderNext();
     });
-  }, [frames, width, height, textLayers, fileName]);
+  }, [frames, width, height, textLayers, fileName, reverseExport, exportSpeed]);
 
   /** Export as WebM video using canvas.captureStream + MediaRecorder. */
   const exportWebM = useCallback(async (imageCache) => {
@@ -345,6 +355,45 @@ export default function ExportButton() {
                   Requires Chrome 130+ or Edge. Ideal for macOS / iOS playback.
                 </p>
               )}
+
+              {/* Reverse */}
+              <div className="export-modal__field">
+                <span className="export-modal__field-label">Playback</span>
+                <label className="export-modal__checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={reverseExport}
+                    onChange={(e) => setReverseExport(e.target.checked)}
+                    disabled={exporting}
+                  />
+                  Reverse frame order
+                </label>
+              </div>
+
+              {/* Speed */}
+              <div className="export-modal__field">
+                <span className="export-modal__field-label">Speed</span>
+                <div className="export-modal__speed-row">
+                  <input
+                    className="export-modal__speed-input"
+                    type="number"
+                    min={0.1}
+                    max={20}
+                    step={0.1}
+                    value={exportSpeed}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v) && v > 0) setExportSpeed(v);
+                    }}
+                    disabled={exporting}
+                    aria-label="Export speed multiplier"
+                  />
+                  <span className="export-modal__speed-unit">×</span>
+                  <span className="export-modal__speed-hint">
+                    {exportSpeed === 1 ? 'original speed' : exportSpeed > 1 ? 'faster' : 'slower'}
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Footer */}

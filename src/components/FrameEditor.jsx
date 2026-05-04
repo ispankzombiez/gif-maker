@@ -16,7 +16,7 @@ import { useProject } from '../store/projectStore';
 const THUMB_H = 36;
 
 /** Small thumbnail canvas for a single frame. */
-function FrameThumb({ frame }) {
+export function FrameThumb({ frame }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {

@@ -95,8 +95,9 @@ export default function ExportButton({ initialSpeed = 1.0 }) {
     // minimum, skip frames proportionally.  Each retained frame then covers
     // multiple original-frame durations, so the total animation time still
     // reflects the requested speed without hitting the floor.
-    const MIN_GIF_DELAY_MS = 20; // 2 centiseconds – enforced by all major browsers
-    const avgDelay = frames.reduce((s, f) => s + (f.delay ?? 100), 0) / (frames.length || 1);
+    const MIN_GIF_DELAY_MS = 20;  // 2 centiseconds – enforced by all major browsers
+    const DEFAULT_FRAME_DELAY_MS = 100; // fallback when a frame has no stored delay
+    const avgDelay = frames.reduce((s, f) => s + (f.delay ?? DEFAULT_FRAME_DELAY_MS), 0) / (frames.length || 1);
     const idealAvgDelay = avgDelay / exportSpeed;
     const frameSkip = idealAvgDelay < MIN_GIF_DELAY_MS
       ? Math.ceil(MIN_GIF_DELAY_MS / idealAvgDelay)
@@ -110,7 +111,7 @@ export default function ExportButton({ initialSpeed = 1.0 }) {
       renderFrameWithLayers(ctx, frame, textLayers, origIndex, width, height, imageCache);
       // Each retained frame covers `frameSkip` original-frame durations, so
       // multiply the delay by frameSkip before dividing by exportSpeed.
-      const adjustedDelay = Math.max(MIN_GIF_DELAY_MS, Math.round((frame.delay ?? 100) * frameSkip / exportSpeed));
+      const adjustedDelay = Math.max(MIN_GIF_DELAY_MS, Math.round((frame.delay ?? DEFAULT_FRAME_DELAY_MS) * frameSkip / exportSpeed));
       gif.addFrame(offscreen, { copy: true, delay: adjustedDelay });
     });
 

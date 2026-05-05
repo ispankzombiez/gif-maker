@@ -86,12 +86,31 @@ export default function ExportButton({ initialSpeed = 1.0 }) {
     offscreen.height = height;
     const ctx = offscreen.getContext('2d');
 
+    // GIF browsers enforce a minimum frame delay of 2 centiseconds (20 ms).
+    // Delays written below this threshold are floored back to 20 ms by every
+    // viewer, so a pure delay-division approach silently fails for GIFs that
+    // already have short per-frame delays (e.g. 25–50 fps originals).
+    //
+    // Fix: when the speed-adjusted average delay would fall below the browser
+    // minimum, skip frames proportionally.  Each retained frame then covers
+    // multiple original-frame durations, so the total animation time still
+    // reflects the requested speed without hitting the floor.
+    const MIN_GIF_DELAY_MS = 20; // 2 centiseconds – enforced by all major browsers
+    const avgDelay = frames.reduce((s, f) => s + (f.delay ?? 100), 0) / (frames.length || 1);
+    const idealAvgDelay = avgDelay / exportSpeed;
+    const frameSkip = idealAvgDelay < MIN_GIF_DELAY_MS
+      ? Math.ceil(MIN_GIF_DELAY_MS / idealAvgDelay)
+      : 1;
+
     const frameList = reverseExport ? [...frames].reverse() : frames;
     frameList.forEach((_, i) => {
+      if (i % frameSkip !== 0) return; // drop frame to compensate for browser minimum
       const origIndex = reverseExport ? frames.length - 1 - i : i;
       const frame = frames[origIndex];
       renderFrameWithLayers(ctx, frame, textLayers, origIndex, width, height, imageCache);
-      const adjustedDelay = Math.max(10, Math.round((frame.delay ?? 100) / exportSpeed));
+      // Each retained frame covers `frameSkip` original-frame durations, so
+      // multiply the delay by frameSkip before dividing by exportSpeed.
+      const adjustedDelay = Math.max(MIN_GIF_DELAY_MS, Math.round((frame.delay ?? 100) * frameSkip / exportSpeed));
       gif.addFrame(offscreen, { copy: true, delay: adjustedDelay });
     });
 

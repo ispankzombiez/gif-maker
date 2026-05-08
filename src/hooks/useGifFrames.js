@@ -22,6 +22,8 @@ import { useProject } from '../store/projectStore';
 
 const DEFAULT_FRAME_DELAY_MS = 100;
 const MIN_FRAME_DELAY_MS = 10;
+const FAST_VIDEO_PLAYBACK_RATE = 8;
+const NORMAL_VIDEO_PLAYBACK_RATE = 4;
 
 function clampFrameDelay(ms) {
   return Math.max(MIN_FRAME_DELAY_MS, Math.round(ms || DEFAULT_FRAME_DELAY_MS));
@@ -191,7 +193,8 @@ export function useGifFrames() {
             pollFrames();
           }
 
-          video.playbackRate = video.duration > 10 ? 8 : 4;
+          video.playbackRate =
+            video.duration > 10 ? FAST_VIDEO_PLAYBACK_RATE : NORMAL_VIDEO_PLAYBACK_RATE;
           video.play().catch(() => {
             settle(new Error('Video playback could not be started.'));
           });

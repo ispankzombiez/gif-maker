@@ -30,13 +30,17 @@ import Uploader from './components/Uploader';
 import Timeline from './components/Timeline';
 import CanvasEditor from './components/CanvasEditor';
 import TextControls from './components/TextControls';
+import FrameEditor from './components/FrameEditor';
+import RotateFlipEditor from './components/RotateFlipEditor';
 import ExportButton from './components/ExportButton';
 import ProjectIO from './components/ProjectIO';
 
 function EditorLayout() {
   const { state, reset, addLayer, setCurrentFrame } = useProject();
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('layers'); // 'layers' | 'frames' | 'rotate'
   const [isPlaying, setIsPlaying] = useState(false);
+  const [previewSpeed, setPreviewSpeed] = useState(1.0);
   const playRef = useRef(null); // { frameIndex, timeoutId }
   const hasFrames = state.frames.length > 0;
 
@@ -80,6 +84,7 @@ function EditorLayout() {
 
   const handleLayerSelected = () => {
     if (window.matchMedia('(max-width: 640px)').matches) {
+      setActiveTab('layers');
       setIsPanelOpen(true);
     }
   };
@@ -97,7 +102,8 @@ function EditorLayout() {
     let frameIndex = state.currentFrameIndex;
 
     function scheduleNext() {
-      const delay = frameDelays[frameIndex] ?? 100;
+      const rawDelay = frameDelays[frameIndex] ?? 100;
+      const delay = Math.max(10, Math.round(rawDelay / previewSpeed));
       const tid = setTimeout(() => {
         // If playback was stopped, do nothing
         if (!playRef.current) return;
@@ -110,7 +116,7 @@ function EditorLayout() {
 
     const tid = scheduleNext();
     playRef.current = { frameIndex, timeoutId: tid };
-  }, [state.frames, state.currentFrameIndex, setCurrentFrame]);
+  }, [state.frames, state.currentFrameIndex, setCurrentFrame, previewSpeed]);
 
   const togglePreview = () => {
     if (isPlaying) {
@@ -128,20 +134,41 @@ function EditorLayout() {
         <nav className="app__nav">
           {hasFrames && (
             <>
-              <ExportButton />
+              <ExportButton initialSpeed={previewSpeed} />
               <ProjectIO />
+              <div className="preview-speed-row">
+                <label className="preview-speed-row__label" htmlFor="preview-speed">
+                  Speed
+                </label>
+                <input
+                  id="preview-speed"
+                  className="preview-speed-row__input"
+                  type="number"
+                  min={0.1}
+                  max={20}
+                  step={0.1}
+                  value={previewSpeed}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v) && v > 0) setPreviewSpeed(v);
+                  }}
+                  aria-label="Preview speed multiplier"
+                  title="Preview playback speed (1 = original)"
+                />
+                <span className="preview-speed-row__unit">×</span>
+              </div>
               <button
                 className={`btn ${isPlaying ? 'btn--primary' : 'btn--secondary'}`}
                 onClick={togglePreview}
-                title={isPlaying ? 'Stop preview' : 'Preview GIF with text'}
-                aria-label={isPlaying ? 'Stop preview' : 'Preview GIF'}
+                title={isPlaying ? 'Stop preview' : 'Preview animation with edits'}
+                aria-label={isPlaying ? 'Stop preview' : 'Preview animation'}
               >
                 {isPlaying ? '⏹ Stop' : '▶ Preview'}
               </button>
               <button
                 className="btn btn--ghost"
                 onClick={() => { stopPreview(); reset(); }}
-                title="Start over with a new GIF"
+                title="Start over with a new file"
               >
                 ✖ New
               </button>
@@ -175,7 +202,37 @@ function EditorLayout() {
             />
             {/* Desktop sidebar */}
             <aside className="app__sidebar">
-              <TextControls />
+              <div className="sidebar-tabs" role="tablist" aria-label="Editor panels">
+                <button
+                  className={`sidebar-tabs__tab${activeTab === 'layers' ? ' sidebar-tabs__tab--active' : ''}`}
+                  role="tab"
+                  aria-selected={activeTab === 'layers'}
+                  onClick={() => setActiveTab('layers')}
+                >
+                  🖊 Layers
+                </button>
+                <button
+                  className={`sidebar-tabs__tab${activeTab === 'frames' ? ' sidebar-tabs__tab--active' : ''}`}
+                  role="tab"
+                  aria-selected={activeTab === 'frames'}
+                  onClick={() => setActiveTab('frames')}
+                >
+                  🎞 Frames
+                </button>
+                <button
+                  className={`sidebar-tabs__tab${activeTab === 'rotate' ? ' sidebar-tabs__tab--active' : ''}`}
+                  role="tab"
+                  aria-selected={activeTab === 'rotate'}
+                  onClick={() => setActiveTab('rotate')}
+                >
+                  🔄 Rotate/Flip
+                </button>
+              </div>
+              <div className="sidebar-tabs__content">
+                {activeTab === 'layers' && <TextControls />}
+                {activeTab === 'frames' && <FrameEditor />}
+                {activeTab === 'rotate' && <RotateFlipEditor />}
+              </div>
             </aside>
           </div>
 
@@ -200,10 +257,12 @@ function EditorLayout() {
           <aside
             className={`side-panel${isPanelOpen ? ' side-panel--open' : ''}`}
             role="dialog"
-            aria-label="Text layer controls"
+            aria-label="Editor controls"
           >
             <div className="side-panel__header">
-              <span className="side-panel__title">Text Settings</span>
+              <span className="side-panel__title">
+                {activeTab === 'layers' ? 'Text Settings' : activeTab === 'frames' ? 'Frame Editor' : 'Rotate / Flip'}
+              </span>
               <button
                 className="side-panel__close"
                 onClick={() => setIsPanelOpen(false)}
@@ -212,8 +271,36 @@ function EditorLayout() {
                 ✕
               </button>
             </div>
+            <div className="sidebar-tabs sidebar-tabs--panel" role="tablist" aria-label="Editor panels">
+              <button
+                className={`sidebar-tabs__tab${activeTab === 'layers' ? ' sidebar-tabs__tab--active' : ''}`}
+                role="tab"
+                aria-selected={activeTab === 'layers'}
+                onClick={() => setActiveTab('layers')}
+              >
+                🖊 Layers
+              </button>
+              <button
+                className={`sidebar-tabs__tab${activeTab === 'frames' ? ' sidebar-tabs__tab--active' : ''}`}
+                role="tab"
+                aria-selected={activeTab === 'frames'}
+                onClick={() => setActiveTab('frames')}
+              >
+                🎞 Frames
+              </button>
+              <button
+                className={`sidebar-tabs__tab${activeTab === 'rotate' ? ' sidebar-tabs__tab--active' : ''}`}
+                role="tab"
+                aria-selected={activeTab === 'rotate'}
+                onClick={() => setActiveTab('rotate')}
+              >
+                🔄 Rotate/Flip
+              </button>
+            </div>
             <div className="side-panel__content">
-              <TextControls />
+              {activeTab === 'layers' && <TextControls />}
+              {activeTab === 'frames' && <FrameEditor />}
+              {activeTab === 'rotate' && <RotateFlipEditor />}
             </div>
           </aside>
         </main>

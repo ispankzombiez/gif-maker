@@ -1,32 +1,69 @@
 /**
  * Uploader.jsx
  *
- * Drag-and-drop / click-to-browse file input that accepts GIF files.
- * Calls extractFrames() from the useGifFrames hook on selection.
+ * Drag-and-drop / click-to-browse file input that accepts GIFs, videos,
+ * and common image formats.
  */
 
 import React, { useCallback, useRef, useState } from 'react';
 import { useGifFrames } from '../hooks/useGifFrames';
 
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'ogv', 'm4v'];
+const VIDEO_EXTENSION_PATTERN = new RegExp(`\\.(${VIDEO_EXTENSIONS.join('|')})$`, 'i');
+const ACCEPTED_TYPES = [
+  'image/gif',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/bmp',
+  'image/avif',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/ogg',
+  '.gif',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.bmp',
+  '.avif',
+  ...VIDEO_EXTENSIONS.map((ext) => `.${ext}`),
+].join(',');
+
+function isGif(file) {
+  return file.type === 'image/gif' || file.name?.toLowerCase().endsWith('.gif');
+}
+
+function isVideo(file) {
+  return file.type?.startsWith('video/') || VIDEO_EXTENSION_PATTERN.test(file.name ?? '');
+}
+
+function isImage(file) {
+  if (isGif(file)) return false;
+  if (isVideo(file)) return false;
+  return file.type?.startsWith('image/') || /\.(png|jpe?g|webp|bmp|avif)$/i.test(file.name ?? '');
+}
+
 export default function Uploader() {
-  const { extractFrames, loading, error } = useGifFrames();
+  const { extractFrames, extractVideoAsFrames, extractImageAsFrame, loading, error } = useGifFrames();
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
 
   const handleFile = useCallback(
     (file) => {
       if (!file) return;
-      // Accept any file; validate by attempting to parse as GIF below.
-      // Avoid strict MIME-type gating here because some mobile browsers
-      // (e.g. Samsung Internet) report a blank or non-standard MIME type
-      // for GIF files picked from the gallery.
-      if (file.type && !file.type.includes('gif') && !file.name?.toLowerCase().endsWith('.gif')) {
-        alert('Please upload a GIF file.');
-        return;
+      if (isGif(file)) {
+        extractFrames(file);
+      } else if (isVideo(file)) {
+        extractVideoAsFrames(file);
+      } else if (isImage(file)) {
+        extractImageAsFrame(file);
+      } else {
+        alert('Please upload a GIF, video, or image file.');
       }
-      extractFrames(file);
     },
-    [extractFrames]
+    [extractFrames, extractVideoAsFrames, extractImageAsFrame]
   );
 
   const onInputChange = (e) => handleFile(e.target.files[0]);
@@ -57,25 +94,27 @@ export default function Uploader() {
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
-      aria-label="Upload a GIF file"
+      aria-label="Upload a GIF, video, or image file"
     >
       <input
         ref={inputRef}
         type="file"
-        accept="image/gif,.gif"
+        accept={ACCEPTED_TYPES}
         onChange={onInputChange}
         style={{ display: 'none' }}
       />
 
       {loading ? (
-        <p className="uploader__status">⏳ Parsing GIF frames…</p>
+        <p className="uploader__status">⏳ Loading…</p>
       ) : (
         <>
           <span className="uploader__icon">🎞️</span>
           <p className="uploader__label">
-            <strong>Click</strong> or <strong>drag & drop</strong> a GIF here
+            <strong>Click</strong> or <strong>drag & drop</strong> a GIF, video, or image here
           </p>
-          <p className="uploader__hint">Supports animated GIFs up to ~10 MB</p>
+          <p className="uploader__hint">
+            GIFs, videos, and images all become editable frames, and exports can be rendered back out as GIFs
+          </p>
         </>
       )}
 

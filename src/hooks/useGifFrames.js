@@ -1,8 +1,8 @@
 /**
  * useGifFrames.js
  *
- * Custom hook that parses a GIF file using the `omggif` library and
- * returns individual frames as ImageData objects suitable for <canvas>.
+ * Custom hook that parses GIF or video uploads into ImageData frames suitable
+ * for <canvas>.
  *
  * GIFs use delta frames — only changed pixels are stored per frame.
  * The disposal method controls how the canvas is prepared before each frame:
@@ -11,17 +11,257 @@
  *   3     — restore to the canvas state from before the previous frame was drawn
  *
  * Usage:
- *   const { extractFrames, loading, error } = useGifFrames();
- *   await extractFrames(file);   // triggers store.setFrames(…)
+ *   const { extractFrames, extractVideoAsFrames, extractImageAsFrame, loading, error } = useGifFrames();
+ *   await extractFrames(file);         // GIF → triggers store.setFrames(…)
+ *   await extractVideoAsFrames(file);  // video → triggers store.setFrames(…)
+ *   await extractImageAsFrame(file);   // image → single-frame store.setFrames(…)
  */
 
 import { useCallback, useState } from 'react';
 import { useProject } from '../store/projectStore';
 
+const DEFAULT_FRAME_DELAY_MS = 100;
+const MIN_FRAME_DELAY_MS = 10;
+const MIN_FRAME_TIME_DELTA_SECONDS = 0.0005;
+const LONG_VIDEO_THRESHOLD_SECONDS = 10;
+const FAST_VIDEO_PLAYBACK_RATE = 8;
+const NORMAL_VIDEO_PLAYBACK_RATE = 4;
+
+function clampFrameDelay(ms) {
+  return Math.max(MIN_FRAME_DELAY_MS, Math.round(ms || DEFAULT_FRAME_DELAY_MS));
+}
+
+function waitForMediaEvent(media, successEvent, failureMessage) {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      media.removeEventListener(successEvent, onSuccess);
+      media.removeEventListener('error', onError);
+    };
+
+    const onSuccess = () => {
+      cleanup();
+      resolve();
+    };
+
+    const onError = () => {
+      cleanup();
+      reject(new Error(failureMessage));
+    };
+
+    media.addEventListener(successEvent, onSuccess, { once: true });
+    media.addEventListener('error', onError, { once: true });
+  });
+}
+
 export function useGifFrames() {
   const { setFrames } = useProject();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const extractImageAsFrame = useCallback(
+    async (file) => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('Failed to load image.'));
+          img.src = url;
+        });
+
+        URL.revokeObjectURL(url);
+
+        const { width, height } = img;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, width, height);
+        setFrames([{ imageData, delay: DEFAULT_FRAME_DELAY_MS }], width, height, file.name);
+      } catch (err) {
+        console.error('Image loading error:', err);
+        setError('Failed to load image. Please try another file.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setFrames]
+  );
+
+  const extractVideoAsFrames = useCallback(
+    async (file) => {
+      setLoading(true);
+      setError(null);
+
+      let url = null;
+      let video = null;
+
+      try {
+        url = URL.createObjectURL(file);
+        video = document.createElement('video');
+        video.preload = 'auto';
+        video.muted = true;
+        video.playsInline = true;
+        video.src = url;
+
+        await waitForMediaEvent(video, 'loadeddata', 'Failed to load video.');
+
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+
+        if (!width || !height || !Number.isFinite(video.duration) || video.duration <= 0) {
+          throw new Error('Unsupported or empty video file.');
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const capturedFrames = [];
+
+        const captureFrame = (mediaTime) => {
+          const safeMediaTime = Number.isFinite(mediaTime) ? mediaTime : video.currentTime;
+          const lastTime = capturedFrames[capturedFrames.length - 1]?.mediaTime;
+
+          if (
+            lastTime !== undefined &&
+            Math.abs(safeMediaTime - lastTime) < MIN_FRAME_TIME_DELTA_SECONDS
+          ) {
+            return;
+          }
+
+          ctx.drawImage(video, 0, 0, width, height);
+          capturedFrames.push({
+            mediaTime: safeMediaTime,
+            imageData: ctx.getImageData(0, 0, width, height),
+          });
+        };
+
+        captureFrame(0);
+
+        await new Promise((resolve, reject) => {
+          let finished = false;
+          let frameCallbackId = null;
+          let rafId = null;
+
+          const cleanup = () => {
+            finished = true;
+            video.removeEventListener('ended', onEnded);
+            video.removeEventListener('error', onError);
+            if (rafId !== null) {
+              cancelAnimationFrame(rafId);
+            }
+            if (frameCallbackId !== null && typeof video.cancelVideoFrameCallback === 'function') {
+              video.cancelVideoFrameCallback(frameCallbackId);
+            }
+          };
+
+          const settle = (err) => {
+            cleanup();
+            if (err) reject(err);
+            else resolve();
+          };
+
+          const onEnded = () => {
+            captureFrame(video.duration);
+            settle();
+          };
+
+          const onError = () => {
+            settle(new Error('Failed while decoding video frames.'));
+          };
+
+          const pollFrames = () => {
+            if (finished) return;
+            captureFrame(video.currentTime);
+            rafId = requestAnimationFrame(pollFrames);
+          };
+
+          const captureFromVideoFrameCallback = (_now, metadata) => {
+            if (finished) return;
+            captureFrame(metadata?.mediaTime);
+            if (!finished) {
+              frameCallbackId = video.requestVideoFrameCallback(captureFromVideoFrameCallback);
+            }
+          };
+
+          video.addEventListener('ended', onEnded, { once: true });
+          video.addEventListener('error', onError, { once: true });
+
+          if (typeof video.requestVideoFrameCallback === 'function') {
+            frameCallbackId = video.requestVideoFrameCallback(captureFromVideoFrameCallback);
+          } else {
+            pollFrames();
+          }
+
+          video.playbackRate =
+            video.duration > LONG_VIDEO_THRESHOLD_SECONDS
+              ? FAST_VIDEO_PLAYBACK_RATE
+              : NORMAL_VIDEO_PLAYBACK_RATE;
+          video.play().catch(() => {
+            settle(new Error('Video playback could not be started.'));
+          });
+        });
+
+        if (!capturedFrames.length) {
+          throw new Error('No video frames were captured.');
+        }
+
+        const averageFrameDeltaMs =
+          capturedFrames.length > 1
+            ? capturedFrames
+                .slice(1)
+                .reduce(
+                  (sum, frame, index) => {
+                    const previousFrame = capturedFrames[index];
+                    return sum + ((frame.mediaTime - previousFrame.mediaTime) * 1000);
+                  },
+                  0
+                ) / (capturedFrames.length - 1)
+            : DEFAULT_FRAME_DELAY_MS;
+        const fallbackDelayMs = clampFrameDelay(averageFrameDeltaMs);
+
+        const frames = capturedFrames.map((frame, index) => {
+          const nextTime = capturedFrames[index + 1]?.mediaTime;
+          const previousDelta =
+            index > 0
+              ? (capturedFrames[index].mediaTime - capturedFrames[index - 1].mediaTime) * 1000
+              : null;
+          const delay =
+            nextTime !== undefined
+              ? (nextTime - frame.mediaTime) * 1000
+              : previousDelta ?? fallbackDelayMs;
+
+          return {
+            imageData: frame.imageData,
+            delay: clampFrameDelay(delay > 0 ? delay : fallbackDelayMs),
+          };
+        });
+
+        setFrames(frames, width, height, file.name);
+      } catch (err) {
+        console.error('Video parsing error:', err);
+        setError('Failed to load video. Please try another file.');
+      } finally {
+        if (video) {
+          video.pause();
+          video.removeAttribute('src');
+          video.load();
+        }
+        if (url) {
+          URL.revokeObjectURL(url);
+        }
+        setLoading(false);
+      }
+    },
+    [setFrames]
+  );
 
   const extractFrames = useCallback(
     async (file) => {
@@ -120,5 +360,5 @@ export function useGifFrames() {
     [setFrames]
   );
 
-  return { extractFrames, loading, error };
+  return { extractFrames, extractVideoAsFrames, extractImageAsFrame, loading, error };
 }

@@ -295,6 +295,146 @@ function reducer(state, action) {
         defaultLayerSettings: action.defaultLayerSettings ?? pickDefaultSettings(DEFAULT_TEXT_LAYER_PROPS),
       };
 
+    case 'DELETE_FRAME': {
+      const idx = action.index;
+      const newFrames = state.frames.filter((_, i) => i !== idx);
+      if (newFrames.length === 0) return { ...initialState };
+
+      const newCurrentIndex = Math.min(state.currentFrameIndex, newFrames.length - 1);
+
+      const newTextLayers = state.textLayers.map((layer) => {
+        // Shift per-frame positions
+        const newPositions = {};
+        for (const [k, v] of Object.entries(layer.positions ?? {})) {
+          const ki = Number(k);
+          if (ki < idx) newPositions[ki] = v;
+          else if (ki > idx) newPositions[ki - 1] = v;
+          // ki === idx: discard
+        }
+        // Adjust frame range
+        let sf = layer.startFrame;
+        let ef = layer.endFrame;
+        if (sf >= idx && sf > 0) sf -= 1;
+        if (ef >= idx) ef = Math.max(sf, ef - 1);
+        sf = Math.min(sf, newFrames.length - 1);
+        ef = Math.min(ef, newFrames.length - 1);
+        return { ...layer, startFrame: sf, endFrame: ef, positions: newPositions };
+      });
+
+      return { ...state, frames: newFrames, currentFrameIndex: newCurrentIndex, textLayers: newTextLayers };
+    }
+
+    case 'DUPLICATE_FRAME': {
+      const idx = action.index;
+      const frameCopy = { ...state.frames[idx] };
+      const newFrames = [
+        ...state.frames.slice(0, idx + 1),
+        frameCopy,
+        ...state.frames.slice(idx + 1),
+      ];
+
+      const newTextLayers = state.textLayers.map((layer) => {
+        const newPositions = {};
+        for (const [k, v] of Object.entries(layer.positions ?? {})) {
+          const ki = Number(k);
+          if (ki <= idx) newPositions[ki] = v;
+          else newPositions[ki + 1] = v;
+        }
+        // Copy position at idx to the new duplicate slot (idx+1)
+        const posAtIdx = (layer.positions ?? {})[idx];
+        if (posAtIdx !== undefined) newPositions[idx + 1] = posAtIdx;
+
+        const ef = layer.endFrame >= idx ? layer.endFrame + 1 : layer.endFrame;
+        return { ...layer, endFrame: ef, positions: newPositions };
+      });
+
+      return { ...state, frames: newFrames, currentFrameIndex: idx + 1, textLayers: newTextLayers };
+    }
+
+    case 'REORDER_FRAMES': {
+      const { fromIndex, toIndex } = action;
+      if (fromIndex === toIndex) return state;
+
+      const newFrames = [...state.frames];
+      const [moved] = newFrames.splice(fromIndex, 1);
+      newFrames.splice(toIndex, 0, moved);
+
+      // Build old-index → new-index mapping
+      const mapIdx = (i) => {
+        if (i === fromIndex) return toIndex;
+        if (fromIndex < toIndex) {
+          if (i > fromIndex && i <= toIndex) return i - 1;
+        } else {
+          if (i >= toIndex && i < fromIndex) return i + 1;
+        }
+        return i;
+      };
+
+      const newCurrentIndex = mapIdx(state.currentFrameIndex);
+
+      const newTextLayers = state.textLayers.map((layer) => {
+        const newPositions = {};
+        for (const [k, v] of Object.entries(layer.positions ?? {})) {
+          newPositions[mapIdx(Number(k))] = v;
+        }
+        return {
+          ...layer,
+          startFrame: mapIdx(layer.startFrame),
+          endFrame: mapIdx(layer.endFrame),
+          positions: newPositions,
+        };
+      });
+
+      return { ...state, frames: newFrames, currentFrameIndex: newCurrentIndex, textLayers: newTextLayers };
+    }
+
+    case 'UPDATE_FRAME_DELAY': {
+      const { index, delay } = action;
+      return {
+        ...state,
+        frames: state.frames.map((f, i) => (i === index ? { ...f, delay } : f)),
+      };
+    }
+
+    case 'UPDATE_FRAME_TRANSFORM': {
+      const { index, changes } = action;
+      return {
+        ...state,
+        frames: state.frames.map((f, i) => (i === index ? { ...f, ...changes } : f)),
+      };
+    }
+
+    case 'ADD_FRAME': {
+      // Insert a new frame (with given imageData and delay) at the specified position.
+      const { insertAt, imageData, delay } = action;
+      const clampedAt = Math.max(0, Math.min(state.frames.length, insertAt));
+      const newFrame = { imageData, delay: delay ?? 100 };
+      const newFrames = [
+        ...state.frames.slice(0, clampedAt),
+        newFrame,
+        ...state.frames.slice(clampedAt),
+      ];
+
+      // Shift text layer positions / ranges for frames at or after clampedAt
+      const newTextLayers = state.textLayers.map((layer) => {
+        const newPositions = {};
+        for (const [k, v] of Object.entries(layer.positions ?? {})) {
+          const ki = Number(k);
+          newPositions[ki >= clampedAt ? ki + 1 : ki] = v;
+        }
+        const sf = layer.startFrame >= clampedAt ? layer.startFrame + 1 : layer.startFrame;
+        const ef = layer.endFrame >= clampedAt ? layer.endFrame + 1 : layer.endFrame;
+        return { ...layer, startFrame: sf, endFrame: ef, positions: newPositions };
+      });
+
+      return {
+        ...state,
+        frames: newFrames,
+        currentFrameIndex: clampedAt,
+        textLayers: newTextLayers,
+      };
+    }
+
     case 'RESET':
       return { ...initialState };
 
@@ -350,6 +490,30 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'UPDATE_DEFAULT_SETTINGS', changes });
   }, []);
 
+  const deleteFrame = useCallback((index) => {
+    dispatch({ type: 'DELETE_FRAME', index });
+  }, []);
+
+  const duplicateFrame = useCallback((index) => {
+    dispatch({ type: 'DUPLICATE_FRAME', index });
+  }, []);
+
+  const reorderFrames = useCallback((fromIndex, toIndex) => {
+    dispatch({ type: 'REORDER_FRAMES', fromIndex, toIndex });
+  }, []);
+
+  const updateFrameDelay = useCallback((index, delay) => {
+    dispatch({ type: 'UPDATE_FRAME_DELAY', index, delay });
+  }, []);
+
+  const updateFrameTransform = useCallback((index, changes) => {
+    dispatch({ type: 'UPDATE_FRAME_TRANSFORM', index, changes });
+  }, []);
+
+  const addFrame = useCallback((insertAt, imageData, delay) => {
+    dispatch({ type: 'ADD_FRAME', insertAt, imageData, delay });
+  }, []);
+
   const loadProject = useCallback((projectState) => {
     dispatch({ type: 'LOAD_PROJECT', ...projectState });
   }, []);
@@ -372,6 +536,12 @@ export function ProjectProvider({ children }) {
         moveAnchor,
         selectLayer,
         updateDefaultSettings,
+        deleteFrame,
+        duplicateFrame,
+        reorderFrames,
+        updateFrameDelay,
+        updateFrameTransform,
+        addFrame,
         loadProject,
         reset,
         DEFAULT_TEXT_LAYER_PROPS,

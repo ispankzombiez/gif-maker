@@ -47,7 +47,7 @@ export default function ProjectIO() {
 
   const handleSave = useCallback(async () => {
     if (!frames.length) {
-      alert('Nothing to save yet – upload a GIF first.');
+      alert('Nothing to save yet – upload a GIF, video, or image first.');
       return;
     }
 
@@ -72,7 +72,7 @@ export default function ProjectIO() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${gifFileName.replace(/\.gif$/i, '') || 'project'}.gifmaker.json`;
+    a.download = `${gifFileName.replace(/\.[^.]+$/i, '') || 'project'}.gifmaker.json`;
     a.click();
     URL.revokeObjectURL(url);
   }, [frames, width, height, textLayers, nextLayerId, gifFileName, currentFrameIndex, defaultLayerSettings]);

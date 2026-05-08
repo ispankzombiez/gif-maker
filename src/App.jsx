@@ -160,15 +160,15 @@ function EditorLayout() {
               <button
                 className={`btn ${isPlaying ? 'btn--primary' : 'btn--secondary'}`}
                 onClick={togglePreview}
-                title={isPlaying ? 'Stop preview' : 'Preview GIF with text'}
-                aria-label={isPlaying ? 'Stop preview' : 'Preview GIF'}
+                title={isPlaying ? 'Stop preview' : 'Preview animation with edits'}
+                aria-label={isPlaying ? 'Stop preview' : 'Preview animation'}
               >
                 {isPlaying ? '⏹ Stop' : '▶ Preview'}
               </button>
               <button
                 className="btn btn--ghost"
                 onClick={() => { stopPreview(); reset(); }}
-                title="Start over with a new GIF"
+                title="Start over with a new file"
               >
                 ✖ New
               </button>

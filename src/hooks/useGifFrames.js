@@ -22,6 +22,8 @@ import { useProject } from '../store/projectStore';
 
 const DEFAULT_FRAME_DELAY_MS = 100;
 const MIN_FRAME_DELAY_MS = 10;
+const MIN_FRAME_TIME_DELTA_SECONDS = 0.0005;
+const LONG_VIDEO_THRESHOLD_SECONDS = 10;
 const FAST_VIDEO_PLAYBACK_RATE = 8;
 const NORMAL_VIDEO_PLAYBACK_RATE = 4;
 
@@ -127,7 +129,10 @@ export function useGifFrames() {
           const safeMediaTime = Number.isFinite(mediaTime) ? mediaTime : video.currentTime;
           const lastTime = capturedFrames[capturedFrames.length - 1]?.mediaTime;
 
-          if (lastTime !== undefined && Math.abs(safeMediaTime - lastTime) < 0.0005) {
+          if (
+            lastTime !== undefined &&
+            Math.abs(safeMediaTime - lastTime) < MIN_FRAME_TIME_DELTA_SECONDS
+          ) {
             return;
           }
 
@@ -194,7 +199,9 @@ export function useGifFrames() {
           }
 
           video.playbackRate =
-            video.duration > 10 ? FAST_VIDEO_PLAYBACK_RATE : NORMAL_VIDEO_PLAYBACK_RATE;
+            video.duration > LONG_VIDEO_THRESHOLD_SECONDS
+              ? FAST_VIDEO_PLAYBACK_RATE
+              : NORMAL_VIDEO_PLAYBACK_RATE;
           video.play().catch(() => {
             settle(new Error('Video playback could not be started.'));
           });

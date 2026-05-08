@@ -8,14 +8,35 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { useGifFrames } from '../hooks/useGifFrames';
 
-const ACCEPTED_TYPES = 'image/gif,image/png,image/jpeg,image/webp,image/bmp,image/avif,video/mp4,video/webm,video/quicktime,video/ogg,.gif,.png,.jpg,.jpeg,.webp,.bmp,.avif,.mp4,.webm,.mov,.ogv,.m4v';
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'ogv', 'm4v'];
+const VIDEO_EXTENSION_PATTERN = new RegExp(`\\.(${VIDEO_EXTENSIONS.join('|')})$`, 'i');
+const ACCEPTED_TYPES = [
+  'image/gif',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/bmp',
+  'image/avif',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/ogg',
+  '.gif',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.bmp',
+  '.avif',
+  ...VIDEO_EXTENSIONS.map((ext) => `.${ext}`),
+].join(',');
 
 function isGif(file) {
   return file.type === 'image/gif' || file.name?.toLowerCase().endsWith('.gif');
 }
 
 function isVideo(file) {
-  return file.type?.startsWith('video/') || /\.(mp4|webm|mov|ogv|m4v)$/i.test(file.name ?? '');
+  return file.type?.startsWith('video/') || VIDEO_EXTENSION_PATTERN.test(file.name ?? '');
 }
 
 function isImage(file) {

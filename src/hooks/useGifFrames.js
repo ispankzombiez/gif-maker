@@ -218,7 +218,10 @@ export function useGifFrames() {
             ? capturedFrames
                 .slice(1)
                 .reduce(
-                  (sum, frame, index) => sum + ((frame.mediaTime - capturedFrames[index].mediaTime) * 1000),
+                  (sum, frame, index) => {
+                    const previousFrame = capturedFrames[index];
+                    return sum + ((frame.mediaTime - previousFrame.mediaTime) * 1000);
+                  },
                   0
                 ) / (capturedFrames.length - 1)
             : DEFAULT_FRAME_DELAY_MS;

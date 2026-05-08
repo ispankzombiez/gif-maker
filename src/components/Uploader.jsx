@@ -113,7 +113,7 @@ export default function Uploader() {
             <strong>Click</strong> or <strong>drag & drop</strong> a GIF, video, or image here
           </p>
           <p className="uploader__hint">
-            Videos are automatically split into editable frames and exported back out as GIFs
+            GIFs, videos, and images all become editable frames, and exports can be rendered back out as GIFs
           </p>
         </>
       )}

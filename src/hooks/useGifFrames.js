@@ -214,7 +214,7 @@ export function useGifFrames() {
         const fallbackDelayMs =
           capturedFrames.length > 1
             ? clampFrameDelay((capturedFrames[1].mediaTime - capturedFrames[0].mediaTime) * 1000)
-            : clampFrameDelay(video.duration * 1000);
+            : DEFAULT_FRAME_DELAY_MS;
 
         const frames = capturedFrames.map((frame, index) => {
           const nextTime = capturedFrames[index + 1]?.mediaTime;
@@ -222,11 +222,10 @@ export function useGifFrames() {
             index > 0
               ? (capturedFrames[index].mediaTime - capturedFrames[index - 1].mediaTime) * 1000
               : null;
-          const remainingDuration = (video.duration - frame.mediaTime) * 1000;
           const delay =
             nextTime !== undefined
               ? (nextTime - frame.mediaTime) * 1000
-              : previousDelta ?? remainingDuration;
+              : previousDelta ?? fallbackDelayMs;
 
           return {
             imageData: frame.imageData,

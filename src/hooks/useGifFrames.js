@@ -186,7 +186,9 @@ export function useGifFrames() {
           const captureFromVideoFrameCallback = (_now, metadata) => {
             if (finished) return;
             captureFrame(metadata?.mediaTime);
-            frameCallbackId = video.requestVideoFrameCallback(captureFromVideoFrameCallback);
+            if (!finished) {
+              frameCallbackId = video.requestVideoFrameCallback(captureFromVideoFrameCallback);
+            }
           };
 
           video.addEventListener('ended', onEnded, { once: true });
@@ -211,10 +213,16 @@ export function useGifFrames() {
           throw new Error('No video frames were captured.');
         }
 
-        const fallbackDelayMs =
+        const averageFrameDeltaMs =
           capturedFrames.length > 1
-            ? clampFrameDelay((capturedFrames[1].mediaTime - capturedFrames[0].mediaTime) * 1000)
+            ? capturedFrames
+                .slice(1)
+                .reduce(
+                  (sum, frame, index) => sum + ((frame.mediaTime - capturedFrames[index].mediaTime) * 1000),
+                  0
+                ) / (capturedFrames.length - 1)
             : DEFAULT_FRAME_DELAY_MS;
+        const fallbackDelayMs = clampFrameDelay(averageFrameDeltaMs);
 
         const frames = capturedFrames.map((frame, index) => {
           const nextTime = capturedFrames[index + 1]?.mediaTime;

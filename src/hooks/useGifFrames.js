@@ -53,6 +53,94 @@ function waitForMediaEvent(media, successEvent, failureMessage) {
   });
 }
 
+async function imageDataFromImageFile(file) {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+
+  try {
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('Failed to load image.'));
+      img.src = url;
+    });
+
+    const width = img.width;
+    const height = img.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+
+    return {
+      width,
+      height,
+      imageData: ctx.getImageData(0, 0, width, height),
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function decodeAnimatedWebpFrames(file) {
+  if (typeof globalThis.ImageDecoder === 'undefined') {
+    return null;
+  }
+
+  if (typeof globalThis.ImageDecoder.isTypeSupported === 'function' && !globalThis.ImageDecoder.isTypeSupported(file.type)) {
+    return null;
+  }
+
+  let decoder;
+
+  try {
+    decoder = new globalThis.ImageDecoder({ data: file.stream(), type: file.type });
+    await decoder.tracks.ready;
+
+    const track = decoder.tracks.selectedTrack;
+    if (!track || !track.frameCount || !track.animated) {
+      return null;
+    }
+
+    const frames = [];
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    for (let frameIndex = 0; frameIndex < track.frameCount; frameIndex += 1) {
+      const result = await decoder.decode({ frameIndex });
+      const frame = result.image;
+      const width = frame.displayWidth || frame.codedWidth;
+      const height = frame.displayHeight || frame.codedHeight;
+
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(frame, 0, 0);
+      frames.push({
+        imageData: ctx.getImageData(0, 0, width, height),
+        delay: clampFrameDelay((frame.duration ?? DEFAULT_FRAME_DELAY_MS * 1000) / 1000),
+      });
+      frame.close();
+    }
+
+    return {
+      frames,
+      width: canvas.width,
+      height: canvas.height,
+    };
+  } catch (err) {
+    console.warn('Animated WebP decode failed, falling back to a single frame.', err);
+    return null;
+  } finally {
+    if (decoder) {
+      decoder.close();
+    }
+  }
+}
+
 export function useGifFrames() {
   const { setFrames } = useProject();
   const [loading, setLoading] = useState(false);
@@ -64,29 +152,36 @@ export function useGifFrames() {
       setError(null);
 
       try {
-        const url = URL.createObjectURL(file);
-        const img = new Image();
-
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = () => reject(new Error('Failed to load image.'));
-          img.src = url;
-        });
-
-        URL.revokeObjectURL(url);
-
-        const { width, height } = img;
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-
-        const imageData = ctx.getImageData(0, 0, width, height);
+        const { width, height, imageData } = await imageDataFromImageFile(file);
         setFrames([{ imageData, delay: DEFAULT_FRAME_DELAY_MS }], width, height, file.name);
       } catch (err) {
         console.error('Image loading error:', err);
         setError('Failed to load image. Please try another file.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setFrames]
+  );
+
+  const extractWebpAsFrames = useCallback(
+    async (file) => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const decoded = await decodeAnimatedWebpFrames(file);
+
+        if (decoded?.frames?.length) {
+          setFrames(decoded.frames, decoded.width, decoded.height, file.name);
+          return;
+        }
+
+        const { width, height, imageData } = await imageDataFromImageFile(file);
+        setFrames([{ imageData, delay: DEFAULT_FRAME_DELAY_MS }], width, height, file.name);
+      } catch (err) {
+        console.error('WebP loading error:', err);
+        setError('Failed to load WebP image. Please try another file.');
       } finally {
         setLoading(false);
       }
@@ -360,5 +455,5 @@ export function useGifFrames() {
     [setFrames]
   );
 
-  return { extractFrames, extractVideoAsFrames, extractImageAsFrame, loading, error };
+  return { extractFrames, extractVideoAsFrames, extractImageAsFrame, extractWebpAsFrames, loading, error };
 }

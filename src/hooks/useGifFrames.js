@@ -91,13 +91,14 @@ async function decodeAnimatedWebpFrames(file) {
     return null;
   }
 
-  const decoder = new globalThis.ImageDecoder({ data: file, type: file.type });
+  let decoder;
 
   try {
+    decoder = new globalThis.ImageDecoder({ data: file.stream(), type: file.type });
     await decoder.tracks.ready;
-    const track = decoder.tracks.selectedTrack;
 
-    if (!track || !track.frameCount) {
+    const track = decoder.tracks.selectedTrack;
+    if (!track || !track.frameCount || !track.animated) {
       return null;
     }
 
@@ -129,8 +130,13 @@ async function decodeAnimatedWebpFrames(file) {
       width: canvas.width,
       height: canvas.height,
     };
+  } catch (err) {
+    console.warn('Animated WebP decode failed, falling back to a single frame.', err);
+    return null;
   } finally {
-    decoder.close();
+    if (decoder) {
+      decoder.close();
+    }
   }
 }
 

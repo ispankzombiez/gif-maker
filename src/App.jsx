@@ -130,17 +130,7 @@ function EditorLayout() {
     <div className="app">
       {/* ── Header ─────────────────────────────────────────────────── */}
       <header className="app__header">
-        <div className="app__brand">
-          <h1 className="app__title">🎬 GIF Maker</h1>
-          <a
-            className="app__source-link"
-            href="https://github.com/ispankzombiez/gif-maker"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            View source
-          </a>
-        </div>
+        <h1 className="app__title">🎬 GIF Maker</h1>
         <nav className="app__nav">
           {hasFrames && (
             <>

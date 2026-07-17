@@ -54,9 +54,11 @@ function isImage(file) {
 }
 
 export default function Uploader() {
-  const { extractFrames, extractVideoAsFrames, extractImageAsFrame, loading, error } = useGifFrames();
+  const { extractFrames, extractVideoAsFrames, extractImageAsFrame, extractWebpAsFrames, loading, error } = useGifFrames();
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+
+  const isWebp = (file) => file.type === 'image/webp' || /\.webp$/i.test(file.name ?? '');
 
   const handleFile = useCallback(
     (file) => {
@@ -65,13 +67,15 @@ export default function Uploader() {
         extractFrames(file);
       } else if (isVideo(file)) {
         extractVideoAsFrames(file);
+      } else if (isWebp(file)) {
+        extractWebpAsFrames(file);
       } else if (isImage(file)) {
         extractImageAsFrame(file);
       } else {
         alert('Please upload a GIF, video, or image file.');
       }
     },
-    [extractFrames, extractVideoAsFrames, extractImageAsFrame]
+    [extractFrames, extractVideoAsFrames, extractWebpAsFrames, extractImageAsFrame]
   );
 
   const onInputChange = (e) => handleFile(e.target.files[0]);

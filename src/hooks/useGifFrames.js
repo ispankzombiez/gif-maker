@@ -109,17 +109,18 @@ async function decodeAnimatedWebpFrames(file) {
     for (let frameIndex = 0; frameIndex < track.frameCount; frameIndex += 1) {
       const result = await decoder.decode({ frameIndex });
       const frame = result.image;
-      const width = frame.codedWidth || frame.displayWidth;
-      const height = frame.codedHeight || frame.displayHeight;
+      const width = frame.displayWidth || frame.codedWidth;
+      const height = frame.displayHeight || frame.codedHeight;
 
-      if (!canvas.width || !canvas.height) {
+      if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
       }
 
-      ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(frame, 0, 0);
       frames.push({
-        imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+        imageData: ctx.getImageData(0, 0, width, height),
         delay: clampFrameDelay((frame.duration ?? DEFAULT_FRAME_DELAY_MS * 1000) / 1000),
       });
       frame.close();

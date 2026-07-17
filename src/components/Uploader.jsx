@@ -10,6 +10,14 @@ import { useGifFrames } from '../hooks/useGifFrames';
 
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'ogv', 'm4v'];
 const VIDEO_EXTENSION_PATTERN = new RegExp(`\\.(${VIDEO_EXTENSIONS.join('|')})$`, 'i');
+const VIDEO_MIME_TYPES = new Set([
+  'video/mp4',
+  'application/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/ogg',
+  'video/x-m4v',
+]);
 const ACCEPTED_TYPES = [
   'image/gif',
   'image/png',
@@ -36,7 +44,7 @@ function isGif(file) {
 }
 
 function isVideo(file) {
-  return file.type?.startsWith('video/') || VIDEO_EXTENSION_PATTERN.test(file.name ?? '');
+  return VIDEO_MIME_TYPES.has(file.type) || file.type?.startsWith('video/') || VIDEO_EXTENSION_PATTERN.test(file.name ?? '');
 }
 
 function isImage(file) {
@@ -110,10 +118,10 @@ export default function Uploader() {
         <>
           <span className="uploader__icon">🎞️</span>
           <p className="uploader__label">
-            <strong>Click</strong> or <strong>drag & drop</strong> a GIF, video, or image here
+            <strong>Click</strong> or <strong>drag & drop</strong> a GIF, mp4/video, or image here
           </p>
           <p className="uploader__hint">
-            GIFs, videos, and images all become editable frames, and exports can be rendered back out as GIFs
+            GIFs, mp4/video files, and images all become editable frames, and exports can be rendered back out as GIFs
           </p>
         </>
       )}

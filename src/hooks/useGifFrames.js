@@ -217,6 +217,65 @@ async function decodeAnimatedWebpFrames(file) {
   }
 }
 
+async function decodeAnimatedImageWithImageDecoder(file) {
+  if (typeof globalThis.ImageDecoder === 'undefined') {
+    return null;
+  }
+
+  if (typeof globalThis.ImageDecoder.isTypeSupported === 'function' && !globalThis.ImageDecoder.isTypeSupported(file.type)) {
+    return null;
+  }
+
+  let decoder;
+
+  try {
+    decoder = new globalThis.ImageDecoder({ data: file.stream(), type: file.type });
+    await decoder.tracks.ready;
+
+    const track = decoder.tracks.selectedTrack;
+    if (!track || !track.frameCount || !track.animated) {
+      return null;
+    }
+
+    const frames = [];
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    for (let frameIndex = 0; frameIndex < track.frameCount; frameIndex += 1) {
+      const result = await decoder.decode({ frameIndex });
+      const frame = result.image;
+      const width = frame.displayWidth || frame.codedWidth;
+      const height = frame.displayHeight || frame.codedHeight;
+
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(frame, 0, 0);
+      frames.push({
+        imageData: ctx.getImageData(0, 0, width, height),
+        delay: clampFrameDelay((frame.duration ?? DEFAULT_FRAME_DELAY_MS * 1000) / 1000),
+      });
+      frame.close();
+    }
+
+    return {
+      frames,
+      width: canvas.width,
+      height: canvas.height,
+    };
+  } catch (err) {
+    console.warn('ImageDecoder animated decode failed, falling back to JS decoders.', err);
+    return null;
+  } finally {
+    if (decoder) {
+      decoder.close();
+    }
+  }
+}
+
 async function decodeFileToFrames(file) {
   if (!file) {
     throw new Error('No file selected.');
@@ -230,6 +289,11 @@ async function decodeFileToFrames(file) {
   const isWebp = file.type === 'image/webp' || /\.webp$/i.test(file.name ?? '');
 
   if (isGif) {
+    const nativeDecoded = await decodeAnimatedImageWithImageDecoder(file);
+    if (nativeDecoded?.frames?.length > 1) {
+      return nativeDecoded;
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const gif = parseGIF(arrayBuffer);
     const framesRaw = decompressFrames(gif, true);
@@ -239,7 +303,7 @@ async function decodeFileToFrames(file) {
 
     if (!width || !height || !framesRaw.length) {
       const fallback = await decodeGifWithOmgGif(file);
-      if (fallback?.frames?.length) {
+      if (fallback?.frames?.length > 1) {
         return fallback;
       }
       throw new Error('Could not decode animated GIF frames.');

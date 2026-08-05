@@ -53,6 +53,17 @@ function waitForMediaEvent(media, successEvent, failureMessage) {
   });
 }
 
+async function looksLikeGif(file) {
+  try {
+    const header = new Uint8Array(await file.slice(0, 6).arrayBuffer());
+    if (header.length < 6) return false;
+    const signature = String.fromCharCode(...header);
+    return signature === 'GIF87a' || signature === 'GIF89a';
+  } catch {
+    return false;
+  }
+}
+
 async function imageDataFromImageFile(file) {
   const url = URL.createObjectURL(file);
   const img = new Image();
@@ -146,7 +157,10 @@ async function decodeFileToFrames(file) {
     throw new Error('No file selected.');
   }
 
-  const isGif = file.type === 'image/gif' || file.name?.toLowerCase().endsWith('.gif');
+  const isGif =
+    file.type === 'image/gif' ||
+    file.name?.toLowerCase().endsWith('.gif') ||
+    (await looksLikeGif(file));
   const isVideo = file.type?.startsWith('video/') || /\.(mp4|webm|mov|ogv|m4v)$/i.test(file.name ?? '');
   const isWebp = file.type === 'image/webp' || /\.webp$/i.test(file.name ?? '');
 

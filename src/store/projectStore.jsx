@@ -435,6 +435,41 @@ function reducer(state, action) {
       };
     }
 
+    case 'ADD_FRAMES': {
+      const { insertAt, frames } = action;
+      const safeFrames = Array.isArray(frames) ? frames.filter(Boolean) : [];
+      if (safeFrames.length === 0) return state;
+
+      const clampedAt = Math.max(0, Math.min(state.frames.length, insertAt));
+      const newFrames = [
+        ...state.frames.slice(0, clampedAt),
+        ...safeFrames.map((frame) => ({
+          imageData: frame.imageData,
+          delay: frame.delay ?? 100,
+        })),
+        ...state.frames.slice(clampedAt),
+      ];
+      const shift = safeFrames.length;
+
+      const newTextLayers = state.textLayers.map((layer) => {
+        const newPositions = {};
+        for (const [k, v] of Object.entries(layer.positions ?? {})) {
+          const ki = Number(k);
+          newPositions[ki >= clampedAt ? ki + shift : ki] = v;
+        }
+        const sf = layer.startFrame >= clampedAt ? layer.startFrame + shift : layer.startFrame;
+        const ef = layer.endFrame >= clampedAt ? layer.endFrame + shift : layer.endFrame;
+        return { ...layer, startFrame: sf, endFrame: ef, positions: newPositions };
+      });
+
+      return {
+        ...state,
+        frames: newFrames,
+        currentFrameIndex: clampedAt,
+        textLayers: newTextLayers,
+      };
+    }
+
     case 'RESET':
       return { ...initialState };
 
@@ -514,6 +549,10 @@ export function ProjectProvider({ children }) {
     dispatch({ type: 'ADD_FRAME', insertAt, imageData, delay });
   }, []);
 
+  const addFrames = useCallback((insertAt, frames) => {
+    dispatch({ type: 'ADD_FRAMES', insertAt, frames });
+  }, []);
+
   const loadProject = useCallback((projectState) => {
     dispatch({ type: 'LOAD_PROJECT', ...projectState });
   }, []);
@@ -542,6 +581,7 @@ export function ProjectProvider({ children }) {
         updateFrameDelay,
         updateFrameTransform,
         addFrame,
+        addFrames,
         loadProject,
         reset,
         DEFAULT_TEXT_LAYER_PROPS,

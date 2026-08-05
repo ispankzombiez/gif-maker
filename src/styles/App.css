@@ -311,6 +311,238 @@ a:hover { text-decoration: underline; }
   padding: 2px 14px;
 }
 
+/* ─── Frame editor ────────────────────────────────────────────────────────── */
+.frame-editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.frame-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.frame-editor__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.frame-editor__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.frame-editor__count {
+  color: var(--color-text-dim);
+  font-size: 0.8rem;
+}
+
+.frame-editor__add-btn,
+.frame-editor__act-btn {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface2);
+  color: var(--color-text);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+
+.frame-editor__add-btn:hover,
+.frame-editor__act-btn:hover:not(:disabled) {
+  background: var(--color-border);
+  border-color: var(--color-primary-hover);
+}
+
+.frame-editor__add-btn:active,
+.frame-editor__act-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.frame-editor__add-btn {
+  padding: 8px 12px;
+  font-weight: 700;
+}
+
+.frame-editor__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.frame-editor__item {
+  display: grid;
+  grid-template-columns: auto 72px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface2);
+}
+
+.frame-editor__item--active {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.frame-editor__thumb-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.frame-editor__thumb {
+  display: block;
+  border-radius: 4px;
+  image-rendering: pixelated;
+}
+
+.frame-editor__pos-input,
+.frame-editor__delay-input,
+.frame-editor__modal-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 7px 8px;
+}
+
+.frame-editor__delay-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.frame-editor__delay-unit {
+  color: var(--color-text-dim);
+  font-size: 0.8rem;
+}
+
+.frame-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.frame-editor__act-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.frame-editor__act-btn--danger:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.frame-editor__modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 6, 10, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 2000;
+}
+
+.frame-editor__modal {
+  width: min(100%, 420px);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.frame-editor__modal-title {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.frame-editor__modal-copy {
+  color: var(--color-text-dim);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.frame-editor__modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.frame-editor__placement-group {
+  display: flex;
+  gap: 8px;
+}
+
+.frame-editor__placement-btn {
+  flex: 1;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface2);
+  color: var(--color-text);
+  padding: 8px 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+
+.frame-editor__placement-btn:hover {
+  background: var(--color-border);
+}
+
+.frame-editor__placement-btn--active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface2));
+}
+
+.frame-editor__modal-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.frame-editor__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.frame-editor__modal-input:focus,
+.frame-editor__pos-input:focus,
+.frame-editor__delay-input:focus,
+.frame-editor__add-btn:focus,
+.frame-editor__act-btn:focus,
+.frame-editor__thumb-btn:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 /* ─── Canvas editor ────────────────────────────────────────────────────────── */
 .canvas-editor {
   flex: 1;

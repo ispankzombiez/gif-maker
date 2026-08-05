@@ -12,6 +12,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useProject } from '../store/projectStore';
+import { decodeFileToFrames } from '../hooks/useGifFrames';
 
 const THUMB_H = 36;
 
@@ -113,47 +114,79 @@ function PositionInput({ index, total, onMove }) {
 }
 
 export default function FrameEditor() {
-  const { state, setCurrentFrame, deleteFrame, duplicateFrame, reorderFrames, updateFrameDelay, addFrame } =
+  const { state, setCurrentFrame, deleteFrame, duplicateFrame, reorderFrames, updateFrameDelay, addFrame, addFrames } =
     useProject();
   const { frames, currentFrameIndex } = state;
-  const canvasWidth = state.width;
-  const canvasHeight = state.height;
 
   const fileInputRef = useRef(null);
+  const [pendingImport, setPendingImport] = useState(null);
+  const [insertFrameValue, setInsertFrameValue] = useState('');
+  const [insertPlacement, setInsertPlacement] = useState('after');
 
-  /** Read an image file, draw it onto a canvas scaled to the project dimensions, and add it as a new frame. */
-  const handleImageFile = (file) => {
+  useEffect(() => {
+    if (!pendingImport) return;
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        cancelPendingImport();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pendingImport]);
+
+  /** Read a file, decode it into one or more frames, and insert into the project. */
+  const handleFile = async (file) => {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = canvasHeight;
-      const ctx = canvas.getContext('2d');
-      // Draw the image scaled to fill the canvas (letterbox / pillarbox to keep aspect ratio)
-      const scale = Math.min(canvasWidth / img.width, canvasHeight / img.height);
-      const drawW = img.width * scale;
-      const drawH = img.height * scale;
-      const offsetX = (canvasWidth - drawW) / 2;
-      const offsetY = (canvasHeight - drawH) / 2;
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-      ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
-      const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-      URL.revokeObjectURL(url);
-      // Insert after the currently selected frame
-      addFrame(currentFrameIndex + 1, imageData, 100);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      alert('Could not load the selected image.');
-    };
-    img.src = url;
+    try {
+      const decoded = await decodeFileToFrames(file);
+      const decodedFrames = decoded?.frames ?? [];
+
+      if (!decodedFrames.length) {
+        alert('Could not load the selected file.');
+        return;
+      }
+
+      if (decodedFrames.length === 1) {
+        addFrame(currentFrameIndex + 1, decodedFrames[0].imageData, decodedFrames[0].delay ?? 100);
+        return;
+      }
+
+      const defaultInsertPosition = Math.min(frames.length + 1, currentFrameIndex + 2);
+      setInsertFrameValue(String(defaultInsertPosition));
+      setInsertPlacement('after');
+      setPendingImport({ frames: decodedFrames, totalFrames: frames.length });
+    } catch (err) {
+      console.error('Frame import error:', err);
+      alert('Could not load the selected file.');
+    }
+  };
+
+  const cancelPendingImport = () => {
+    setPendingImport(null);
+    setInsertFrameValue('');
+    setInsertPlacement('after');
+  };
+
+  const confirmPendingImport = () => {
+    if (!pendingImport) return;
+
+    const parsed = parseInt(insertFrameValue, 10);
+    if (Number.isNaN(parsed)) {
+      alert('Please enter a valid frame number.');
+      return;
+    }
+
+    const referenceFrame = Math.max(1, Math.min(pendingImport.totalFrames, parsed));
+    const referenceIndex = referenceFrame - 1;
+    const insertAt = insertPlacement === 'before' ? referenceIndex : referenceIndex + 1;
+    addFrames(insertAt, pendingImport.frames);
+    cancelPendingImport();
   };
 
   const onFileInputChange = (e) => {
-    handleImageFile(e.target.files[0]);
+    handleFile(e.target.files[0]);
     // Reset so the same file can be selected again
     e.target.value = '';
   };
@@ -169,15 +202,15 @@ export default function FrameEditor() {
           <button
             className="frame-editor__add-btn"
             onClick={() => fileInputRef.current?.click()}
-            title="Add frame from image file"
-            aria-label="Add frame from image file"
+            title="Add frames from an image, GIF, or video file"
+            aria-label="Add frames from an image, GIF, or video file"
           >
             + Add Frame
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/gif,image/*,video/*,.gif,.mp4,.webm,.mov,.ogv,.m4v"
             style={{ display: 'none' }}
             onChange={onFileInputChange}
           />
@@ -257,6 +290,66 @@ export default function FrameEditor() {
           </li>
         ))}
       </ul>
+
+      {pendingImport && (
+        <div className="frame-editor__modal-overlay" role="presentation" onMouseDown={cancelPendingImport}>
+          <div
+            className="frame-editor__modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="frame-import-title"
+            aria-describedby="frame-import-description"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h4 id="frame-import-title" className="frame-editor__modal-title">
+              Insert imported frames
+            </h4>
+            <p id="frame-import-description" className="frame-editor__modal-copy">
+              This file contains {pendingImport.frames.length} frames. Choose the 1-based frame number where they should start in the timeline.
+            </p>
+            <label className="frame-editor__modal-field">
+              <span className="frame-editor__modal-label">Reference frame</span>
+              <input
+                className="frame-editor__modal-input"
+                type="number"
+                min={1}
+                max={pendingImport.totalFrames}
+                value={insertFrameValue}
+                onChange={(e) => setInsertFrameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') confirmPendingImport();
+                  if (e.key === 'Escape') cancelPendingImport();
+                }}
+                autoFocus
+              />
+            </label>
+            <div className="frame-editor__placement-group" role="radiogroup" aria-label="Insert relative to frame">
+              <button
+                type="button"
+                className={`frame-editor__placement-btn${insertPlacement === 'before' ? ' frame-editor__placement-btn--active' : ''}`}
+                onClick={() => setInsertPlacement('before')}
+              >
+                Before
+              </button>
+              <button
+                type="button"
+                className={`frame-editor__placement-btn${insertPlacement === 'after' ? ' frame-editor__placement-btn--active' : ''}`}
+                onClick={() => setInsertPlacement('after')}
+              >
+                After
+              </button>
+            </div>
+            <div className="frame-editor__modal-actions">
+              <button className="btn btn--secondary" type="button" onClick={cancelPendingImport}>
+                Cancel
+              </button>
+              <button className="btn btn--primary" type="button" onClick={confirmPendingImport}>
+                Insert frames
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

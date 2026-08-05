@@ -141,6 +141,239 @@ async function decodeAnimatedWebpFrames(file) {
   }
 }
 
+async function decodeFileToFrames(file) {
+  if (!file) {
+    throw new Error('No file selected.');
+  }
+
+  const isGif = file.type === 'image/gif' || file.name?.toLowerCase().endsWith('.gif');
+  const isVideo = file.type?.startsWith('video/') || /\.(mp4|webm|mov|ogv|m4v)$/i.test(file.name ?? '');
+  const isWebp = file.type === 'image/webp' || /\.webp$/i.test(file.name ?? '');
+
+  if (isGif) {
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+
+    const { GifReader } = await import('omggif');
+    const reader = new GifReader(uint8);
+
+    const width = reader.width;
+    const height = reader.height;
+    const frameCount = reader.numFrames();
+    const frames = [];
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width;
+    offscreen.height = height;
+    const offCtx = offscreen.getContext('2d');
+
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = width;
+    tmpCanvas.height = height;
+    const tmpCtx = tmpCanvas.getContext('2d');
+
+    let savedSnapshot = null;
+
+    for (let i = 0; i < frameCount; i++) {
+      const frameInfo = reader.frameInfo(i);
+
+      if (i > 0) {
+        const prevInfo = reader.frameInfo(i - 1);
+        switch (prevInfo.disposal) {
+          case 2:
+            offCtx.clearRect(prevInfo.x, prevInfo.y, prevInfo.width, prevInfo.height);
+            break;
+          case 3:
+            if (savedSnapshot) {
+              offCtx.putImageData(savedSnapshot, 0, 0);
+            }
+            break;
+          default:
+            break;
+        }
+      }
+
+      savedSnapshot = frameInfo.disposal === 3 ? offCtx.getImageData(0, 0, width, height) : null;
+
+      const pixelData = new Uint8ClampedArray(width * height * 4);
+      reader.decodeAndBlitFrameRGBA(i, pixelData);
+
+      tmpCtx.clearRect(0, 0, width, height);
+      tmpCtx.putImageData(new ImageData(pixelData, width, height), 0, 0);
+      offCtx.drawImage(tmpCanvas, 0, 0);
+
+      frames.push({ imageData: offCtx.getImageData(0, 0, width, height), delay: (frameInfo.delay || 10) * 10 });
+    }
+
+    return { frames, width, height };
+  }
+
+  if (isVideo) {
+    let url = null;
+    let video = null;
+
+    try {
+      url = URL.createObjectURL(file);
+      video = document.createElement('video');
+      video.preload = 'auto';
+      video.muted = true;
+      video.playsInline = true;
+      video.src = url;
+
+      await waitForMediaEvent(video, 'loadeddata', 'Failed to load video.');
+
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+
+      if (!width || !height || !Number.isFinite(video.duration) || video.duration <= 0) {
+        throw new Error('Unsupported or empty video file.');
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const capturedFrames = [];
+
+      const captureFrame = (mediaTime) => {
+        const safeMediaTime = Number.isFinite(mediaTime) ? mediaTime : video.currentTime;
+        const lastTime = capturedFrames[capturedFrames.length - 1]?.mediaTime;
+
+        if (lastTime !== undefined && Math.abs(safeMediaTime - lastTime) < MIN_FRAME_TIME_DELTA_SECONDS) {
+          return;
+        }
+
+        ctx.drawImage(video, 0, 0, width, height);
+        capturedFrames.push({
+          mediaTime: safeMediaTime,
+          imageData: ctx.getImageData(0, 0, width, height),
+        });
+      };
+
+      captureFrame(0);
+
+      await new Promise((resolve, reject) => {
+        let finished = false;
+        let frameCallbackId = null;
+        let rafId = null;
+
+        const cleanup = () => {
+          finished = true;
+          video.removeEventListener('ended', onEnded);
+          video.removeEventListener('error', onError);
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+          }
+          if (frameCallbackId !== null && typeof video.cancelVideoFrameCallback === 'function') {
+            video.cancelVideoFrameCallback(frameCallbackId);
+          }
+        };
+
+        const settle = (err) => {
+          cleanup();
+          if (err) reject(err);
+          else resolve();
+        };
+
+        const onEnded = () => {
+          captureFrame(video.duration);
+          settle();
+        };
+
+        const onError = () => {
+          settle(new Error('Failed while decoding video frames.'));
+        };
+
+        const pollFrames = () => {
+          if (finished) return;
+          captureFrame(video.currentTime);
+          rafId = requestAnimationFrame(pollFrames);
+        };
+
+        const captureFromVideoFrameCallback = (_now, metadata) => {
+          if (finished) return;
+          captureFrame(metadata?.mediaTime);
+          if (!finished) {
+            frameCallbackId = video.requestVideoFrameCallback(captureFromVideoFrameCallback);
+          }
+        };
+
+        video.addEventListener('ended', onEnded, { once: true });
+        video.addEventListener('error', onError, { once: true });
+
+        if (typeof video.requestVideoFrameCallback === 'function') {
+          frameCallbackId = video.requestVideoFrameCallback(captureFromVideoFrameCallback);
+        } else {
+          pollFrames();
+        }
+
+        video.playbackRate = video.duration > LONG_VIDEO_THRESHOLD_SECONDS ? FAST_VIDEO_PLAYBACK_RATE : NORMAL_VIDEO_PLAYBACK_RATE;
+        video.play().catch(() => {
+          settle(new Error('Video playback could not be started.'));
+        });
+      });
+
+      if (!capturedFrames.length) {
+        throw new Error('No video frames were captured.');
+      }
+
+      const averageFrameDeltaMs =
+        capturedFrames.length > 1
+          ? capturedFrames.slice(1).reduce(
+              (sum, frame, index) => {
+                const previousFrame = capturedFrames[index];
+                return sum + ((frame.mediaTime - previousFrame.mediaTime) * 1000);
+              },
+              0
+            ) / (capturedFrames.length - 1)
+          : DEFAULT_FRAME_DELAY_MS;
+      const fallbackDelayMs = clampFrameDelay(averageFrameDeltaMs);
+
+      const frames = capturedFrames.map((frame, index) => {
+        const nextTime = capturedFrames[index + 1]?.mediaTime;
+        const previousDelta =
+          index > 0
+            ? (capturedFrames[index].mediaTime - capturedFrames[index - 1].mediaTime) * 1000
+            : null;
+        const delay =
+          nextTime !== undefined
+            ? (nextTime - frame.mediaTime) * 1000
+            : previousDelta ?? fallbackDelayMs;
+
+        return {
+          imageData: frame.imageData,
+          delay: clampFrameDelay(delay > 0 ? delay : fallbackDelayMs),
+        };
+      });
+
+      return { frames, width, height };
+    } finally {
+      if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      }
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    }
+  }
+
+  if (isWebp) {
+    const decoded = await decodeAnimatedWebpFrames(file);
+    if (decoded?.frames?.length) {
+      return decoded;
+    }
+  }
+
+  const { width, height, imageData } = await imageDataFromImageFile(file);
+  return {
+    frames: [{ imageData, delay: DEFAULT_FRAME_DELAY_MS }],
+    width,
+    height,
+  };
+}
+
 export function useGifFrames() {
   const { setFrames } = useProject();
   const [loading, setLoading] = useState(false);
@@ -457,3 +690,5 @@ export function useGifFrames() {
 
   return { extractFrames, extractVideoAsFrames, extractImageAsFrame, extractWebpAsFrames, loading, error };
 }
+
+export { decodeFileToFrames };

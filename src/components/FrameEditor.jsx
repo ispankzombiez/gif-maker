@@ -139,16 +139,29 @@ export default function FrameEditor() {
   /** Read a file, decode it into one or more frames, and insert into the project. */
   const handleFile = async (file) => {
     if (!file) return;
+    console.log('[handleFile] selected:', file.name, file.type, file.size);
+
+    // Detect GIF/video so we can always show the modal for animated sources
+    // even if the decoder only extracted 1 frame (useful for diagnosing issues).
+    const isAnimatedSource =
+      file.type === 'image/gif' ||
+      file.name?.toLowerCase().endsWith('.gif') ||
+      file.type?.startsWith('video/');
+
     try {
       const decoded = await decodeFileToFrames(file);
       const decodedFrames = decoded?.frames ?? [];
+
+      console.log('[handleFile] decodedFrames.length:', decodedFrames.length);
 
       if (!decodedFrames.length) {
         alert('Could not load the selected file.');
         return;
       }
 
-      if (decodedFrames.length === 1) {
+      // Single still images (png/jpg/etc.) insert directly.
+      // GIFs and videos always open the modal so frame count is visible.
+      if (decodedFrames.length === 1 && !isAnimatedSource) {
         addFrame(currentFrameIndex + 1, decodedFrames[0].imageData, decodedFrames[0].delay ?? 100);
         return;
       }
@@ -186,9 +199,11 @@ export default function FrameEditor() {
   };
 
   const onFileInputChange = (e) => {
-    handleFile(e.target.files[0]);
-    // Reset so the same file can be selected again
+    // Capture the File reference BEFORE clearing the input so the async
+    // file read that follows cannot be affected by the value reset.
+    const file = e.target.files[0];
     e.target.value = '';
+    handleFile(file);
   };
 
   if (!frames.length) return null;

@@ -164,6 +164,8 @@ async function decodeFileToFrames(file) {
   const isVideo = file.type?.startsWith('video/') || /\.(mp4|webm|mov|ogv|m4v)$/i.test(file.name ?? '');
   const isWebp = file.type === 'image/webp' || /\.webp$/i.test(file.name ?? '');
 
+  console.log('[decodeFileToFrames] name:', file.name, '| type:', file.type, '| size:', file.size, '| isGif:', isGif, '| isVideo:', isVideo, '| isWebp:', isWebp);
+
   if (isGif) {
     // Single clean read — same path as the proven extractFrames hook.
     const arrayBuffer = await file.arrayBuffer();
@@ -175,6 +177,8 @@ async function decodeFileToFrames(file) {
     const width = reader.width;
     const height = reader.height;
     const frameCount = reader.numFrames();
+
+    console.log('[decodeFileToFrames] GIF dimensions:', width, 'x', height, '| frameCount:', frameCount);
 
     if (!width || !height || !frameCount) {
       throw new Error('Could not decode GIF.');
@@ -226,6 +230,7 @@ async function decodeFileToFrames(file) {
       });
     }
 
+    console.log('[decodeFileToFrames] GIF decoded frames:', frames.length);
     return { frames, width, height };
   }
 

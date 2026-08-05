@@ -16,6 +16,36 @@ import { decodeFileToFrames } from '../hooks/useGifFrames';
 
 const THUMB_H = 36;
 
+/**
+ * Scale an ImageData to (targetW × targetH), letterboxing / pillarboxing to
+ * preserve the source aspect ratio.  Returns the original object unchanged
+ * when dimensions already match.
+ */
+function scaleImageDataToFit(imageData, targetW, targetH) {
+  if (imageData.width === targetW && imageData.height === targetH) return imageData;
+
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = imageData.width;
+  srcCanvas.height = imageData.height;
+  srcCanvas.getContext('2d').putImageData(imageData, 0, 0);
+
+  const dstCanvas = document.createElement('canvas');
+  dstCanvas.width = targetW;
+  dstCanvas.height = targetH;
+  const dstCtx = dstCanvas.getContext('2d');
+
+  const scale = Math.min(targetW / imageData.width, targetH / imageData.height);
+  const drawW = imageData.width * scale;
+  const drawH = imageData.height * scale;
+  const drawX = (targetW - drawW) / 2;
+  const drawY = (targetH - drawH) / 2;
+
+  dstCtx.clearRect(0, 0, targetW, targetH);
+  dstCtx.drawImage(srcCanvas, drawX, drawY, drawW, drawH);
+
+  return dstCtx.getImageData(0, 0, targetW, targetH);
+}
+
 /** Small thumbnail canvas for a single frame. */
 export function FrameThumb({ frame }) {
   const canvasRef = useRef(null);
@@ -116,7 +146,7 @@ function PositionInput({ index, total, onMove }) {
 export default function FrameEditor() {
   const { state, setCurrentFrame, deleteFrame, duplicateFrame, reorderFrames, updateFrameDelay, addFrame, addFrames } =
     useProject();
-  const { frames, currentFrameIndex } = state;
+  const { frames, currentFrameIndex, width: projectWidth, height: projectHeight } = state;
 
   const fileInputRef = useRef(null);
   const [pendingImport, setPendingImport] = useState(null);
@@ -159,17 +189,25 @@ export default function FrameEditor() {
         return;
       }
 
+      // Scale every decoded frame to match the project canvas so that frames
+      // with different source dimensions are centred and letterboxed rather
+      // than clipped or offset.
+      const scaledFrames = decodedFrames.map((f) => ({
+        ...f,
+        imageData: scaleImageDataToFit(f.imageData, projectWidth, projectHeight),
+      }));
+
       // Single still images (png/jpg/etc.) insert directly.
       // GIFs and videos always open the modal so frame count is visible.
-      if (decodedFrames.length === 1 && !isAnimatedSource) {
-        addFrame(currentFrameIndex + 1, decodedFrames[0].imageData, decodedFrames[0].delay ?? 100);
+      if (scaledFrames.length === 1 && !isAnimatedSource) {
+        addFrame(currentFrameIndex + 1, scaledFrames[0].imageData, scaledFrames[0].delay ?? 100);
         return;
       }
 
       const defaultInsertPosition = Math.min(frames.length + 1, currentFrameIndex + 2);
       setInsertFrameValue(String(defaultInsertPosition));
       setInsertPlacement('after');
-      setPendingImport({ frames: decodedFrames, totalFrames: frames.length });
+      setPendingImport({ frames: scaledFrames, totalFrames: frames.length });
     } catch (err) {
       console.error('Frame import error:', err);
       alert('Could not load the selected file.');

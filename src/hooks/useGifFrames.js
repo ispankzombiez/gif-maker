@@ -54,6 +54,70 @@ function waitForMediaEvent(media, successEvent, failureMessage) {
   });
 }
 
+async function decodeGifWithOmgGif(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const uint8 = new Uint8Array(arrayBuffer);
+
+  const { GifReader } = await import('omggif');
+  const reader = new GifReader(uint8);
+
+  const width = reader.width;
+  const height = reader.height;
+  const frameCount = reader.numFrames();
+  if (!width || !height || !frameCount) {
+    return null;
+  }
+
+  const frames = [];
+  const offscreen = document.createElement('canvas');
+  offscreen.width = width;
+  offscreen.height = height;
+  const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
+
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = width;
+  tmpCanvas.height = height;
+  const tmpCtx = tmpCanvas.getContext('2d', { willReadFrequently: true });
+
+  let savedSnapshot = null;
+
+  for (let i = 0; i < frameCount; i += 1) {
+    const frameInfo = reader.frameInfo(i);
+
+    if (i > 0) {
+      const prevInfo = reader.frameInfo(i - 1);
+      switch (prevInfo.disposal) {
+        case 2:
+          offCtx.clearRect(prevInfo.x, prevInfo.y, prevInfo.width, prevInfo.height);
+          break;
+        case 3:
+          if (savedSnapshot) {
+            offCtx.putImageData(savedSnapshot, 0, 0);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    savedSnapshot = frameInfo.disposal === 3 ? offCtx.getImageData(0, 0, width, height) : null;
+
+    const pixelData = new Uint8ClampedArray(width * height * 4);
+    reader.decodeAndBlitFrameRGBA(i, pixelData);
+
+    tmpCtx.clearRect(0, 0, width, height);
+    tmpCtx.putImageData(new ImageData(pixelData, width, height), 0, 0);
+    offCtx.drawImage(tmpCanvas, 0, 0);
+
+    frames.push({
+      imageData: offCtx.getImageData(0, 0, width, height),
+      delay: (frameInfo.delay || 10) * 10,
+    });
+  }
+
+  return { frames, width, height };
+}
+
 async function looksLikeGif(file) {
   try {
     const header = new Uint8Array(await file.slice(0, 6).arrayBuffer());
@@ -174,7 +238,18 @@ async function decodeFileToFrames(file) {
     const height = gif.lsd?.height ?? 0;
 
     if (!width || !height || !framesRaw.length) {
+      const fallback = await decodeGifWithOmgGif(file);
+      if (fallback?.frames?.length) {
+        return fallback;
+      }
       throw new Error('Could not decode animated GIF frames.');
+    }
+
+    if (framesRaw.length < 2) {
+      const fallback = await decodeGifWithOmgGif(file);
+      if (fallback?.frames?.length > framesRaw.length) {
+        return fallback;
+      }
     }
 
     const frames = [];

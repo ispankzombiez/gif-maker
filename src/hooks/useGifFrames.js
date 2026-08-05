@@ -19,7 +19,6 @@
 
 import { useCallback, useState } from 'react';
 import { useProject } from '../store/projectStore';
-import { decompressFrames, parseGIF } from 'gifuct-js';
 
 const DEFAULT_FRAME_DELAY_MS = 100;
 const MIN_FRAME_DELAY_MS = 10;
@@ -52,70 +51,6 @@ function waitForMediaEvent(media, successEvent, failureMessage) {
     media.addEventListener(successEvent, onSuccess, { once: true });
     media.addEventListener('error', onError, { once: true });
   });
-}
-
-async function decodeGifWithOmgGif(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const uint8 = new Uint8Array(arrayBuffer);
-
-  const { GifReader } = await import('omggif');
-  const reader = new GifReader(uint8);
-
-  const width = reader.width;
-  const height = reader.height;
-  const frameCount = reader.numFrames();
-  if (!width || !height || !frameCount) {
-    return null;
-  }
-
-  const frames = [];
-  const offscreen = document.createElement('canvas');
-  offscreen.width = width;
-  offscreen.height = height;
-  const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
-
-  const tmpCanvas = document.createElement('canvas');
-  tmpCanvas.width = width;
-  tmpCanvas.height = height;
-  const tmpCtx = tmpCanvas.getContext('2d', { willReadFrequently: true });
-
-  let savedSnapshot = null;
-
-  for (let i = 0; i < frameCount; i += 1) {
-    const frameInfo = reader.frameInfo(i);
-
-    if (i > 0) {
-      const prevInfo = reader.frameInfo(i - 1);
-      switch (prevInfo.disposal) {
-        case 2:
-          offCtx.clearRect(prevInfo.x, prevInfo.y, prevInfo.width, prevInfo.height);
-          break;
-        case 3:
-          if (savedSnapshot) {
-            offCtx.putImageData(savedSnapshot, 0, 0);
-          }
-          break;
-        default:
-          break;
-      }
-    }
-
-    savedSnapshot = frameInfo.disposal === 3 ? offCtx.getImageData(0, 0, width, height) : null;
-
-    const pixelData = new Uint8ClampedArray(width * height * 4);
-    reader.decodeAndBlitFrameRGBA(i, pixelData);
-
-    tmpCtx.clearRect(0, 0, width, height);
-    tmpCtx.putImageData(new ImageData(pixelData, width, height), 0, 0);
-    offCtx.drawImage(tmpCanvas, 0, 0);
-
-    frames.push({
-      imageData: offCtx.getImageData(0, 0, width, height),
-      delay: (frameInfo.delay || 10) * 10,
-    });
-  }
-
-  return { frames, width, height };
 }
 
 async function looksLikeGif(file) {
@@ -217,65 +152,6 @@ async function decodeAnimatedWebpFrames(file) {
   }
 }
 
-async function decodeAnimatedImageWithImageDecoder(file) {
-  if (typeof globalThis.ImageDecoder === 'undefined') {
-    return null;
-  }
-
-  if (typeof globalThis.ImageDecoder.isTypeSupported === 'function' && !globalThis.ImageDecoder.isTypeSupported(file.type)) {
-    return null;
-  }
-
-  let decoder;
-
-  try {
-    decoder = new globalThis.ImageDecoder({ data: file.stream(), type: file.type });
-    await decoder.tracks.ready;
-
-    const track = decoder.tracks.selectedTrack;
-    if (!track || !track.frameCount || !track.animated) {
-      return null;
-    }
-
-    const frames = [];
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-    for (let frameIndex = 0; frameIndex < track.frameCount; frameIndex += 1) {
-      const result = await decoder.decode({ frameIndex });
-      const frame = result.image;
-      const width = frame.displayWidth || frame.codedWidth;
-      const height = frame.displayHeight || frame.codedHeight;
-
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(frame, 0, 0);
-      frames.push({
-        imageData: ctx.getImageData(0, 0, width, height),
-        delay: clampFrameDelay((frame.duration ?? DEFAULT_FRAME_DELAY_MS * 1000) / 1000),
-      });
-      frame.close();
-    }
-
-    return {
-      frames,
-      width: canvas.width,
-      height: canvas.height,
-    };
-  } catch (err) {
-    console.warn('ImageDecoder animated decode failed, falling back to JS decoders.', err);
-    return null;
-  } finally {
-    if (decoder) {
-      decoder.close();
-    }
-  }
-}
-
 async function decodeFileToFrames(file) {
   if (!file) {
     throw new Error('No file selected.');
@@ -289,74 +165,64 @@ async function decodeFileToFrames(file) {
   const isWebp = file.type === 'image/webp' || /\.webp$/i.test(file.name ?? '');
 
   if (isGif) {
-    const nativeDecoded = await decodeAnimatedImageWithImageDecoder(file);
-    if (nativeDecoded?.frames?.length > 1) {
-      return nativeDecoded;
-    }
-
+    // Single clean read — same path as the proven extractFrames hook.
     const arrayBuffer = await file.arrayBuffer();
-    const gif = parseGIF(arrayBuffer);
-    const framesRaw = decompressFrames(gif, true);
+    const uint8 = new Uint8Array(arrayBuffer);
 
-    const width = gif.lsd?.width ?? 0;
-    const height = gif.lsd?.height ?? 0;
+    const { GifReader } = await import('omggif');
+    const reader = new GifReader(uint8);
 
-    if (!width || !height || !framesRaw.length) {
-      const fallback = await decodeGifWithOmgGif(file);
-      if (fallback?.frames?.length > 1) {
-        return fallback;
-      }
-      throw new Error('Could not decode animated GIF frames.');
-    }
+    const width = reader.width;
+    const height = reader.height;
+    const frameCount = reader.numFrames();
 
-    if (framesRaw.length < 2) {
-      const fallback = await decodeGifWithOmgGif(file);
-      if (fallback?.frames?.length > framesRaw.length) {
-        return fallback;
-      }
+    if (!width || !height || !frameCount) {
+      throw new Error('Could not decode GIF.');
     }
 
     const frames = [];
+
     const offscreen = document.createElement('canvas');
     offscreen.width = width;
     offscreen.height = height;
     const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
 
-    const patchCanvas = document.createElement('canvas');
-    const patchCtx = patchCanvas.getContext('2d', { willReadFrequently: true });
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = width;
+    tmpCanvas.height = height;
+    const tmpCtx = tmpCanvas.getContext('2d', { willReadFrequently: true });
 
     let savedSnapshot = null;
 
-    for (let i = 0; i < framesRaw.length; i += 1) {
-      const frame = framesRaw[i];
-      const prevFrame = framesRaw[i - 1];
+    for (let i = 0; i < frameCount; i += 1) {
+      const frameInfo = reader.frameInfo(i);
 
-      if (i > 0 && prevFrame) {
-        switch (prevFrame.disposalType) {
+      if (i > 0) {
+        const prevInfo = reader.frameInfo(i - 1);
+        switch (prevInfo.disposal) {
           case 2:
-            offCtx.clearRect(prevFrame.dims.left, prevFrame.dims.top, prevFrame.dims.width, prevFrame.dims.height);
+            offCtx.clearRect(prevInfo.x, prevInfo.y, prevInfo.width, prevInfo.height);
             break;
           case 3:
-            if (savedSnapshot) {
-              offCtx.putImageData(savedSnapshot, 0, 0);
-            }
+            if (savedSnapshot) offCtx.putImageData(savedSnapshot, 0, 0);
             break;
           default:
             break;
         }
       }
 
-      savedSnapshot = frame.disposalType === 3 ? offCtx.getImageData(0, 0, width, height) : null;
+      savedSnapshot = frameInfo.disposal === 3 ? offCtx.getImageData(0, 0, width, height) : null;
 
-      patchCanvas.width = frame.dims.width;
-      patchCanvas.height = frame.dims.height;
-      patchCtx.clearRect(0, 0, patchCanvas.width, patchCanvas.height);
-      patchCtx.putImageData(new ImageData(frame.patch, frame.dims.width, frame.dims.height), 0, 0);
-      offCtx.drawImage(patchCanvas, frame.dims.left, frame.dims.top);
+      const pixelData = new Uint8ClampedArray(width * height * 4);
+      reader.decodeAndBlitFrameRGBA(i, pixelData);
+
+      tmpCtx.clearRect(0, 0, width, height);
+      tmpCtx.putImageData(new ImageData(pixelData, width, height), 0, 0);
+      offCtx.drawImage(tmpCanvas, 0, 0);
 
       frames.push({
         imageData: offCtx.getImageData(0, 0, width, height),
-        delay: clampFrameDelay(frame.delay),
+        delay: (frameInfo.delay || 10) * 10,
       });
     }
 

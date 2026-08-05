@@ -19,6 +19,7 @@
 
 import { useCallback, useState } from 'react';
 import { useProject } from '../store/projectStore';
+import { decompressFrames, parseGIF } from 'gifuct-js';
 
 const DEFAULT_FRAME_DELAY_MS = 100;
 const MIN_FRAME_DELAY_MS = 10;
@@ -166,36 +167,35 @@ async function decodeFileToFrames(file) {
 
   if (isGif) {
     const arrayBuffer = await file.arrayBuffer();
-    const uint8 = new Uint8Array(arrayBuffer);
+    const gif = parseGIF(arrayBuffer);
+    const framesRaw = decompressFrames(gif, true);
 
-    const { GifReader } = await import('omggif');
-    const reader = new GifReader(uint8);
+    const width = gif.lsd?.width ?? 0;
+    const height = gif.lsd?.height ?? 0;
 
-    const width = reader.width;
-    const height = reader.height;
-    const frameCount = reader.numFrames();
+    if (!width || !height || !framesRaw.length) {
+      throw new Error('Could not decode animated GIF frames.');
+    }
+
     const frames = [];
-
     const offscreen = document.createElement('canvas');
     offscreen.width = width;
     offscreen.height = height;
-    const offCtx = offscreen.getContext('2d');
+    const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
 
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = width;
-    tmpCanvas.height = height;
-    const tmpCtx = tmpCanvas.getContext('2d');
+    const patchCanvas = document.createElement('canvas');
+    const patchCtx = patchCanvas.getContext('2d', { willReadFrequently: true });
 
     let savedSnapshot = null;
 
-    for (let i = 0; i < frameCount; i++) {
-      const frameInfo = reader.frameInfo(i);
+    for (let i = 0; i < framesRaw.length; i += 1) {
+      const frame = framesRaw[i];
+      const prevFrame = framesRaw[i - 1];
 
-      if (i > 0) {
-        const prevInfo = reader.frameInfo(i - 1);
-        switch (prevInfo.disposal) {
+      if (i > 0 && prevFrame) {
+        switch (prevFrame.disposalType) {
           case 2:
-            offCtx.clearRect(prevInfo.x, prevInfo.y, prevInfo.width, prevInfo.height);
+            offCtx.clearRect(prevFrame.dims.left, prevFrame.dims.top, prevFrame.dims.width, prevFrame.dims.height);
             break;
           case 3:
             if (savedSnapshot) {
@@ -207,16 +207,18 @@ async function decodeFileToFrames(file) {
         }
       }
 
-      savedSnapshot = frameInfo.disposal === 3 ? offCtx.getImageData(0, 0, width, height) : null;
+      savedSnapshot = frame.disposalType === 3 ? offCtx.getImageData(0, 0, width, height) : null;
 
-      const pixelData = new Uint8ClampedArray(width * height * 4);
-      reader.decodeAndBlitFrameRGBA(i, pixelData);
+      patchCanvas.width = frame.dims.width;
+      patchCanvas.height = frame.dims.height;
+      patchCtx.clearRect(0, 0, patchCanvas.width, patchCanvas.height);
+      patchCtx.putImageData(new ImageData(frame.patch, frame.dims.width, frame.dims.height), 0, 0);
+      offCtx.drawImage(patchCanvas, frame.dims.left, frame.dims.top);
 
-      tmpCtx.clearRect(0, 0, width, height);
-      tmpCtx.putImageData(new ImageData(pixelData, width, height), 0, 0);
-      offCtx.drawImage(tmpCanvas, 0, 0);
-
-      frames.push({ imageData: offCtx.getImageData(0, 0, width, height), delay: (frameInfo.delay || 10) * 10 });
+      frames.push({
+        imageData: offCtx.getImageData(0, 0, width, height),
+        delay: clampFrameDelay(frame.delay),
+      });
     }
 
     return { frames, width, height };
